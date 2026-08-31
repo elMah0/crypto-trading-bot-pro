@@ -25,6 +25,7 @@ class ExchangeConfig:
     rate_limit_delay_ms: int = 250
     timeout_seconds: int = 30
     max_retries: int = 3
+    transaction_fee_percent: float = 0.1
     api_key: Optional[str] = None
     api_secret: Optional[str] = None
     password: Optional[str] = None
@@ -76,6 +77,8 @@ class RiskConfig:
     max_concurrent_trades: int = 3
     stop_loss_percent: float = 2.0
     take_profit_percent: float = 4.0
+    transaction_fee_percent: float = 0.1
+    enable_breakeven: bool = True
     trailing_stop: TrailingStopConfig = field(default_factory=TrailingStopConfig)
     circuit_breaker: CircuitBreakerConfig = field(default_factory=CircuitBreakerConfig)
 
@@ -147,12 +150,15 @@ def load_config(config_path: str = "config.yaml", env_path: Optional[str] = ".en
     api_secret = os.getenv("EXCHANGE_API_SECRET") or exc_raw.get("api_secret")
     password = os.getenv("EXCHANGE_PASSWORD") or exc_raw.get("password")
 
+    fee_percent = float(exc_raw.get("transaction_fee_percent", raw_cfg.get("risk", {}).get("transaction_fee_percent", 0.1)))
+
     exc_cfg = ExchangeConfig(
         name=str(exc_raw.get("name", "binance")).lower(),
         testnet=bool(exc_raw.get("testnet", False)),
         rate_limit_delay_ms=int(exc_raw.get("rate_limit_delay_ms", 250)),
         timeout_seconds=int(exc_raw.get("timeout_seconds", 30)),
         max_retries=int(exc_raw.get("max_retries", 3)),
+        transaction_fee_percent=fee_percent,
         api_key=api_key,
         api_secret=api_secret,
         password=password
@@ -209,6 +215,8 @@ def load_config(config_path: str = "config.yaml", env_path: Optional[str] = ".en
         max_concurrent_trades=int(risk_raw.get("max_concurrent_trades", 3)),
         stop_loss_percent=float(risk_raw.get("stop_loss_percent", 2.0)),
         take_profit_percent=float(risk_raw.get("take_profit_percent", 4.0)),
+        transaction_fee_percent=fee_percent,
+        enable_breakeven=bool(risk_raw.get("enable_breakeven", True)),
         trailing_stop=ts_cfg,
         circuit_breaker=cb_cfg
     )
@@ -249,6 +257,79 @@ def load_config(config_path: str = "config.yaml", env_path: Optional[str] = ".en
     )
 
 
+def save_config_to_yaml(config: AppConfig, config_path: str = "config.yaml") -> None:
+    """
+    Guarda los datos de la configuración actual de forma persistente en config.yaml.
+    """
+    data = {
+        "mode": {
+            "dry_run": config.mode.dry_run,
+            "initial_simulated_balance": config.mode.initial_simulated_balance,
+            "quote_currency": config.mode.quote_currency
+        },
+        "exchange": {
+            "name": config.exchange.name,
+            "testnet": config.exchange.testnet,
+            "rate_limit_delay_ms": config.exchange.rate_limit_delay_ms,
+            "timeout_seconds": config.exchange.timeout_seconds,
+            "max_retries": config.exchange.max_retries,
+            "transaction_fee_percent": config.exchange.transaction_fee_percent
+        },
+        "symbols": config.symbols,
+        "strategy": {
+            "macro": {
+                "timeframe": config.strategy.macro.timeframe,
+                "limit_candles": config.strategy.macro.limit_candles,
+                "sma_period": config.strategy.macro.sma_period,
+                "adx_period": config.strategy.macro.adx_period,
+                "adx_min_strength": config.strategy.macro.adx_min_strength
+            },
+            "micro": {
+                "timeframe": config.strategy.micro.timeframe,
+                "limit_candles": config.strategy.micro.limit_candles,
+                "rsi_period": config.strategy.micro.rsi_period,
+                "rsi_max_entry": config.strategy.micro.rsi_max_entry,
+                "rsi_min_entry": config.strategy.micro.rsi_min_entry,
+                "volume_sma_period": config.strategy.micro.volume_sma_period,
+                "volume_factor": config.strategy.micro.volume_factor
+            }
+        },
+        "risk": {
+            "position_size_percent": config.risk.position_size_percent,
+            "max_concurrent_trades": config.risk.max_concurrent_trades,
+            "stop_loss_percent": config.risk.stop_loss_percent,
+            "take_profit_percent": config.risk.take_profit_percent,
+            "transaction_fee_percent": config.risk.transaction_fee_percent,
+            "enable_breakeven": config.risk.enable_breakeven,
+            "trailing_stop": {
+                "enabled": config.risk.trailing_stop.enabled,
+                "activation_profit_percent": config.risk.trailing_stop.activation_profit_percent,
+                "callback_percent": config.risk.trailing_stop.callback_percent
+            },
+            "circuit_breaker": {
+                "max_daily_loss_percent": config.risk.circuit_breaker.max_daily_loss_percent,
+                "sl_cooldown_hours": config.risk.circuit_breaker.sl_cooldown_hours
+            }
+        },
+        "telegram": {
+            "enabled": config.telegram.enabled,
+            "send_heartbeat": config.telegram.send_heartbeat,
+            "heartbeat_interval_minutes": config.telegram.heartbeat_interval_minutes,
+            "daily_report_hour": config.telegram.daily_report_hour
+        },
+        "database": {
+            "db_path": config.database.db_path
+        },
+        "bot_loop": {
+            "check_interval_seconds": config.bot_loop.check_interval_seconds
+        }
+    }
+
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+    logger.info(f"Configuración guardada exitosamente en '{config_path}'.")
+
+
 def _validate_config(
     mode: ModeConfig,
     exchange: ExchangeConfig,
@@ -279,3 +360,4 @@ def _validate_config(
 
     if strat.macro.limit_candles < strat.macro.sma_period:
         raise ValueError("strategy.macro.limit_candles debe ser mayor o igual a sma_period")
+

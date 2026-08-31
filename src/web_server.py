@@ -73,16 +73,36 @@ ws_log_handler.setLevel(logging.INFO)
 logging.getLogger().addHandler(ws_log_handler)
 
 
+def broadcast_trade_event(event_data: dict):
+    """Retransmite un evento de compra o venta a la Web GUI a través de WebSocket para notificaciones emergentes (Toasts)."""
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(ws_manager.broadcast({"type": "trade_notification", "data": event_data}))
+    except Exception as e:
+        logger.debug(f"Error retransmitiendo trade_event: {e}")
+
+
 # --- Modelos de Petición ---
 class ConfigUpdateRequest(BaseModel):
     dry_run: Optional[bool] = None
+    exchange_name: Optional[str] = None
     position_size_percent: Optional[float] = None
     stop_loss_percent: Optional[float] = None
     take_profit_percent: Optional[float] = None
+    transaction_fee_percent: Optional[float] = None
     trailing_activation_profit: Optional[float] = None
     trailing_callback: Optional[float] = None
     max_concurrent_trades: Optional[int] = None
     symbols: Optional[List[str]] = None
+    enable_breakeven: Optional[bool] = None
+
+
+class PositionLevelUpdateRequest(BaseModel):
+    symbol: str
+    take_profit_percent: Optional[float] = None
+    stop_loss_percent: Optional[float] = None
 
 
 # --- Endpoints de API REST ---
@@ -126,6 +146,9 @@ def get_bot_status():
     today_summary = bot_orchestrator.db.get_trades_summary_today(
         is_dry_run=bot_orchestrator.config.mode.dry_run
     )
+    all_time_summary = bot_orchestrator.db.get_all_time_stats(
+        is_dry_run=bot_orchestrator.config.mode.dry_run
+    )
 
     return {
         "is_running": bot_orchestrator.is_running,
@@ -137,7 +160,9 @@ def get_bot_status():
         "currency": bot_orchestrator.config.mode.quote_currency,
         "open_positions": open_positions,
         "today_summary": today_summary,
-        "symbols": bot_orchestrator.config.symbols
+        "all_time_summary": all_time_summary,
+        "symbols": bot_orchestrator.config.symbols,
+        "transaction_fee_percent": getattr(bot_orchestrator.config.risk, "transaction_fee_percent", 0.1)
     }
 
 
@@ -317,6 +342,28 @@ def close_position_manually(symbol: str):
     return {"success": success, "message": f"Posición {clean_sym} cerrada"}
 
 
+@app.post("/api/position/update-levels")
+def update_position_levels(req: PositionLevelUpdateRequest):
+    """Permite ajustar Take Profit % y Stop Loss % de una posición abierta en tiempo real."""
+    if not bot_orchestrator:
+        raise HTTPException(status_code=503, detail="Orquestador no inicializado")
+    
+    clean_sym = req.symbol.replace("-", "/")
+    if clean_sym not in bot_orchestrator.order_executor.open_positions:
+        raise HTTPException(status_code=404, detail=f"No hay posición abierta para {clean_sym}")
+
+    pos = bot_orchestrator.order_executor.open_positions[clean_sym]
+
+    if req.take_profit_percent is not None and req.take_profit_percent > 0:
+        pos.tp_price = pos.entry_price * (1.0 + (req.take_profit_percent / 100.0))
+
+    if req.stop_loss_percent is not None and req.stop_loss_percent > 0:
+        pos.current_sl_price = pos.entry_price * (1.0 - (req.stop_loss_percent / 100.0))
+
+    logger.info(f"[{clean_sym}] Niveles actualizados desde GUI: TP={pos.tp_price:.4f}, SL={pos.current_sl_price:.4f}")
+    return {"success": True, "message": f"Niveles para {clean_sym} actualizados"}
+
+
 @app.get("/api/config")
 def get_config():
     """Devuelve la configuración editable actual."""
@@ -325,18 +372,82 @@ def get_config():
     cfg = bot_orchestrator.config
     return {
         "dry_run": cfg.mode.dry_run,
+        "exchange_name": cfg.exchange.name,
         "quote_currency": cfg.mode.quote_currency,
         "symbols": cfg.symbols,
         "position_size_percent": cfg.risk.position_size_percent,
         "max_concurrent_trades": cfg.risk.max_concurrent_trades,
         "stop_loss_percent": cfg.risk.stop_loss_percent,
         "take_profit_percent": cfg.risk.take_profit_percent,
+        "transaction_fee_percent": getattr(cfg.risk, "transaction_fee_percent", 0.1),
+        "enable_breakeven": getattr(cfg.risk, "enable_breakeven", True),
         "trailing_activation_profit": cfg.risk.trailing_stop.activation_profit_percent,
         "trailing_callback": cfg.risk.trailing_stop.callback_percent,
         "max_daily_loss_percent": cfg.risk.circuit_breaker.max_daily_loss_percent,
         "sl_cooldown_hours": cfg.risk.circuit_breaker.sl_cooldown_hours,
         "check_interval_seconds": cfg.bot_loop.check_interval_seconds
     }
+
+
+@app.post("/api/config")
+def update_config(req: ConfigUpdateRequest):
+    """Actualiza la configuración en caliente desde la interfaz Web y la guarda en config.yaml."""
+    if not bot_orchestrator:
+        raise HTTPException(status_code=503, detail="Orquestador no inicializado")
+    
+    cfg = bot_orchestrator.config
+
+    if req.dry_run is not None:
+        cfg.mode.dry_run = req.dry_run
+        bot_orchestrator.order_executor.is_dry_run = req.dry_run
+
+    if req.exchange_name and req.exchange_name.lower() != cfg.exchange.name.lower():
+        try:
+            cfg.exchange.name = req.exchange_name.lower()
+            bot_orchestrator.exchange_client.reconnect_exchange(cfg.exchange)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Exchange inválido o no soportado: {e}")
+
+    if req.position_size_percent is not None:
+        if not (0.1 <= req.position_size_percent <= 100.0):
+            raise HTTPException(status_code=400, detail="position_size_percent debe estar entre 0.1% y 100%")
+        cfg.risk.position_size_percent = req.position_size_percent
+
+    if req.stop_loss_percent is not None and req.stop_loss_percent > 0:
+        cfg.risk.stop_loss_percent = req.stop_loss_percent
+
+    if req.take_profit_percent is not None and req.take_profit_percent > 0:
+        cfg.risk.take_profit_percent = req.take_profit_percent
+
+    if req.transaction_fee_percent is not None and req.transaction_fee_percent >= 0:
+        cfg.risk.transaction_fee_percent = req.transaction_fee_percent
+        cfg.exchange.transaction_fee_percent = req.transaction_fee_percent
+
+    if req.trailing_activation_profit is not None:
+        cfg.risk.trailing_stop.activation_profit_percent = req.trailing_activation_profit
+
+    if req.trailing_callback is not None:
+        cfg.risk.trailing_stop.callback_percent = req.trailing_callback
+
+    if req.max_concurrent_trades is not None and req.max_concurrent_trades >= 1:
+        cfg.risk.max_concurrent_trades = req.max_concurrent_trades
+
+    if req.symbols is not None and len(req.symbols) > 0:
+        cfg.symbols = req.symbols
+
+    if req.enable_breakeven is not None:
+        cfg.risk.enable_breakeven = req.enable_breakeven
+
+    # Guardar en archivo YAML de forma persistente
+    try:
+        from src.config_loader import save_config_to_yaml
+        save_config_to_yaml(cfg, "config.yaml")
+    except Exception as e:
+        logger.error(f"Error guardando configuración en YAML: {e}")
+
+    logger.info("Configuración del bot actualizada dinámicamente desde la interfaz Web.")
+    return {"success": True, "message": "Configuración actualizada y guardada correctamente"}
+
 
 
 @app.websocket("/ws/logs")

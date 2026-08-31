@@ -221,6 +221,7 @@ document.addEventListener("DOMContentLoaded", () => {
             kpiFreeBalance.textContent = `Disponible: ${data.free_balance.toLocaleString(undefined, {minimumFractionDigits: 2})} ${data.currency}`;
 
             const summary = data.today_summary || {};
+            const allTime = data.all_time_summary || {};
             const pnl = summary.total_pnl || 0.0;
             kpiDailyPnl.textContent = `${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ${data.currency}`;
             kpiDailyPnl.className = `kpi-value ${pnl > 0 ? 'pnl-positive' : pnl < 0 ? 'pnl-negative' : 'pnl-neutral'}`;
@@ -228,6 +229,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
             kpiOpenPositions.textContent = data.open_positions ? data.open_positions.length : 0;
             kpiClosedToday.textContent = `Cerradas hoy: ${summary.count || 0}`;
+
+            // Métricas de Comisiones y Riesgo
+            const kpiTotalFees = document.getElementById("kpi-total-fees");
+            const kpiFeePercent = document.getElementById("kpi-fee-percent");
+            if (kpiTotalFees) {
+                const totalFees = allTime.total_fees || summary.total_fees || 0.0;
+                kpiTotalFees.textContent = `${totalFees.toFixed(2)} ${data.currency}`;
+            }
+            if (kpiFeePercent && data.transaction_fee_percent !== undefined) {
+                kpiFeePercent.textContent = `Fee: ${data.transaction_fee_percent.toFixed(2)}% | Exchange: ${data.exchange}`;
+            }
 
             // Renderizar Posiciones Abiertas
             renderPositions(data.open_positions || []);
@@ -365,7 +377,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (btnRefreshSignals) btnRefreshSignals.addEventListener("click", fetchSignals);
 
     // ==========================================
-    // 5. HISTORIAL DE TRADES (SQLITE)
+    // 5. HISTORIAL DE TRADES (SQLITE CON COMISIONES)
     // ==========================================
     async function fetchTrades() {
         try {
@@ -375,7 +387,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const trades = data.trades || [];
 
             if (trades.length === 0) {
-                tradesTableBody.innerHTML = `<tr><td colspan="9" class="text-center">No hay operaciones registradas aún.</td></tr>`;
+                tradesTableBody.innerHTML = `<tr><td colspan="10" class="text-center">No hay operaciones registradas aún.</td></tr>`;
                 return;
             }
 
@@ -385,6 +397,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const pnlPct = t.pnl_percent || 0.0;
                 const pnlClass = pnl >= 0 ? "pnl-positive" : "pnl-negative";
                 const pnlSign = pnl >= 0 ? "+" : "";
+                const fee = t.fee || 0.0;
 
                 const openTime = t.opened_at ? new Date(t.opened_at).toLocaleTimeString() : "--";
                 const closeTime = t.closed_at ? new Date(t.closed_at).toLocaleTimeString() : "--";
@@ -397,6 +410,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         <td>${t.exit_price ? t.exit_price.toFixed(4) : '--'}</td>
                         <td>${t.amount.toFixed(4)}</td>
                         <td class="${pnlClass}"><b>${pnlSign}${pnl.toFixed(2)} USDT (${pnlSign}${pnlPct.toFixed(2)}%)</b></td>
+                        <td style="color:#9CA3AF;">${fee.toFixed(4)} USDT</td>
                         <td><span class="badge-pro" style="background:#1F2937;color:#E5E7EB;">${t.exit_reason || t.status}</span></td>
                         <td>${openTime}</td>
                         <td>${closeTime}</td>
@@ -410,7 +424,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // ==========================================
-    // 6. CONFIGURACIÓN
+    // 6. CONFIGURACIÓN INTERACTIVA
     // ==========================================
     async function fetchConfig() {
         try {
@@ -418,24 +432,119 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!res.ok) return;
             const cfg = await res.json();
 
-            document.getElementById("cfg-pos-size").value = cfg.position_size_percent;
-            document.getElementById("cfg-sl").value = cfg.stop_loss_percent;
             document.getElementById("cfg-tp").value = cfg.take_profit_percent;
+            document.getElementById("cfg-sl").value = cfg.stop_loss_percent;
+            document.getElementById("cfg-fee").value = cfg.transaction_fee_percent;
+            document.getElementById("cfg-pos-size").value = cfg.position_size_percent;
+            document.getElementById("cfg-max-trades").value = cfg.max_concurrent_trades;
+            document.getElementById("cfg-enable-breakeven").checked = cfg.enable_breakeven !== false;
+
+            document.getElementById("cfg-exchange").value = cfg.exchange_name || "binance";
+            document.getElementById("cfg-mode-dry").value = cfg.dry_run ? "true" : "false";
+            document.getElementById("cfg-symbols").value = (cfg.symbols || []).join(", ");
             document.getElementById("cfg-ts-act").value = cfg.trailing_activation_profit;
             document.getElementById("cfg-ts-cb").value = cfg.trailing_callback;
-
-            document.getElementById("cfg-mode").value = cfg.dry_run ? "Simulación (Dry-Run)" : "Dinero Real";
-            document.getElementById("cfg-quote").value = cfg.quote_currency;
-            document.getElementById("cfg-max-trades").value = cfg.max_concurrent_trades;
-            document.getElementById("cfg-max-daily-loss").value = `${cfg.max_daily_loss_percent}%`;
-            document.getElementById("cfg-interval").value = cfg.check_interval_seconds;
         } catch (err) {
             console.error("Error consultando configuración:", err);
         }
     }
 
+    const btnSaveConfig = document.getElementById("btn-save-config");
+    if (btnSaveConfig) {
+        btnSaveConfig.addEventListener("click", async () => {
+            btnSaveConfig.disabled = true;
+            btnSaveConfig.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Guardando...`;
+
+            const rawSymbols = document.getElementById("cfg-symbols").value;
+            const symbolsList = rawSymbols.split(",").map(s => s.trim().toUpperCase()).filter(s => s.length > 0);
+
+            const payload = {
+                take_profit_percent: parseFloat(document.getElementById("cfg-tp").value),
+                stop_loss_percent: parseFloat(document.getElementById("cfg-sl").value),
+                transaction_fee_percent: parseFloat(document.getElementById("cfg-fee").value),
+                position_size_percent: parseFloat(document.getElementById("cfg-pos-size").value),
+                max_concurrent_trades: parseInt(document.getElementById("cfg-max-trades").value),
+                enable_breakeven: document.getElementById("cfg-enable-breakeven").checked,
+                exchange_name: document.getElementById("cfg-exchange").value,
+                dry_run: document.getElementById("cfg-mode-dry").value === "true",
+                symbols: symbolsList,
+                trailing_activation_profit: parseFloat(document.getElementById("cfg-ts-act").value),
+                trailing_callback: parseFloat(document.getElementById("cfg-ts-cb").value)
+            };
+
+            try {
+                const res = await fetch("/api/config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showToast("success", "Configuración Guardada", "Los cambios se aplicaron y guardaron en config.yaml correctamente.");
+                    fetchStatus();
+                } else {
+                    showToast("error", "Error de Validación", data.detail || "No se pudo actualizar la configuración.");
+                }
+            } catch (err) {
+                console.error("Error guardando configuración:", err);
+                showToast("error", "Error de Red", "No se pudo conectar con el servidor para guardar la configuración.");
+            } finally {
+                btnSaveConfig.disabled = false;
+                btnSaveConfig.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Guardar Cambios en Configuración`;
+            }
+        });
+    }
+
     // ==========================================
-    // 7. BOTONES DE ACCIÓN (START/STOP/SCAN)
+    // 7. NOTIFICACIONES EMERGENTES (TOASTS)
+    // ==========================================
+    function showToast(type, title, message) {
+        const container = document.getElementById("toast-container");
+        if (!container) return;
+
+        const toast = document.createElement("div");
+        let typeClass = "toast-buy";
+        let iconHtml = `<i class="fa-solid fa-cart-shopping"></i>`;
+
+        if (type === "BUY") {
+            typeClass = "toast-buy";
+            iconHtml = `<i class="fa-solid fa-cart-shopping"></i>`;
+        } else if (type === "SELL_TP" || type === "success") {
+            typeClass = "toast-sell-tp";
+            iconHtml = `<i class="fa-solid fa-circle-check"></i>`;
+        } else if (type === "SELL_SL" || type === "error") {
+            typeClass = "toast-sell-sl";
+            iconHtml = `<i class="fa-solid fa-triangle-exclamation"></i>`;
+        }
+
+        toast.className = `toast-card ${typeClass}`;
+        toast.innerHTML = `
+            <div class="toast-icon">${iconHtml}</div>
+            <div class="toast-body">
+                <div class="toast-title">
+                    <span>${title}</span>
+                    <button class="toast-close" onclick="this.parentElement.parentElement.parentElement.remove()">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="toast-message">${message}</div>
+            </div>
+        `;
+
+        container.appendChild(toast);
+
+        // Auto remover después de 6 segundos
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+                setTimeout(() => toast.remove(), 300);
+            }
+        }, 6000);
+    }
+
+    // ==========================================
+    // 8. BOTONES DE ACCIÓN (START/STOP/SCAN)
     // ==========================================
     btnToggleBot.addEventListener("click", async () => {
         const endpoint = isBotRunning ? "/api/bot/stop" : "/api/bot/start";
@@ -469,7 +578,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // ==========================================
-    // 8. WEBSOCKET LOGS EN VIVO
+    // 9. WEBSOCKET LOGS & NOTIFICACIONES EN VIVO
     // ==========================================
     function appendLog(level, message, timestamp) {
         const time = timestamp || new Date().toLocaleTimeString();
@@ -498,6 +607,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 const msg = JSON.parse(event.data);
                 if (msg.type === "log" && msg.data) {
                     appendLog(msg.data.level, msg.data.message, msg.data.timestamp);
+                } else if (msg.type === "trade_notification" && msg.data) {
+                    const trade = msg.data;
+                    if (trade.action === "BUY") {
+                        showToast("BUY", `🚀 COMPRA: ${trade.symbol}`, `Precio: ${trade.price.toFixed(4)} USDT | Costo: ${trade.cost.toFixed(2)} USDT | Fee: ${trade.fee.toFixed(4)} USDT`);
+                    } else if (trade.action === "SELL") {
+                        const toastType = trade.pnl_amount >= 0 ? "SELL_TP" : "SELL_SL";
+                        const pnlSign = trade.pnl_amount >= 0 ? "+" : "";
+                        showToast(toastType, `💰 VENTA: ${trade.symbol} (${trade.exit_reason})`, `Precio: ${trade.exit_price.toFixed(4)} USDT | PnL Neto: ${pnlSign}${trade.pnl_amount.toFixed(2)} USDT (${pnlSign}${trade.pnl_percent.toFixed(2)}%)`);
+                    }
+                    fetchStatus();
+                    loadChartData();
                 }
             } catch (e) {
                 // Mensaje en texto plano
@@ -511,7 +631,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // ==========================================
-    // 9. ARRANQUE DEL DASHBOARD
+    // 10. ARRANQUE DEL DASHBOARD
     // ==========================================
     initChart();
     fetchStatus();
@@ -523,3 +643,4 @@ document.addEventListener("DOMContentLoaded", () => {
         loadChartData();
     }, 10000);
 });
+

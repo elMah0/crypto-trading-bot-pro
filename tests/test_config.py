@@ -32,3 +32,23 @@ def test_invalid_position_size_percent():
     finally:
         if os.path.exists(tmp_name):
             os.remove(tmp_name)
+
+
+def test_save_config_to_yaml():
+    from src.config_loader import save_config_to_yaml
+    cfg = load_config("config.yaml")
+    cfg.risk.take_profit_percent = 5.5
+    cfg.exchange.name = "bybit"
+
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".yaml") as tmp:
+        tmp_name = tmp.name
+
+    try:
+        save_config_to_yaml(cfg, tmp_name)
+        reloaded = load_config(tmp_name)
+        assert reloaded.risk.take_profit_percent == 5.5
+        assert reloaded.exchange.name == "bybit"
+    finally:
+        if os.path.exists(tmp_name):
+            os.remove(tmp_name)
+

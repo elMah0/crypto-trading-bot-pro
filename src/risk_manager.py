@@ -124,8 +124,19 @@ class RiskManager:
         if current_price > position.highest_price:
             position.highest_price = current_price
 
-        # 2. Lógica de Trailing Stop dinámico
+        # 2. Lógica de Trailing Stop y Breakeven dinámico
         ts_cfg = self.config.trailing_stop
+        fee_percent = getattr(self.config, "transaction_fee_percent", 0.1)
+
+        # Breakeven: Si la posición alcanza ganancia suficiente para cubrir comisiones de ida y vuelta + 0.1% libre, proteger entrada
+        if getattr(self.config, "enable_breakeven", True):
+            breakeven_trigger = (fee_percent * 2.0) + 0.1
+            if pnl_percent >= breakeven_trigger:
+                breakeven_sl = position.entry_price * (1.0 + ((fee_percent * 2.0) / 100.0))
+                if breakeven_sl > position.current_sl_price:
+                    position.current_sl_price = breakeven_sl
+                    logger.info(f"[{position.symbol}] Stop Loss ajustado a BREAKEVEN + COMISIONES ({breakeven_sl:.4f})")
+
         if ts_cfg.enabled:
             # Ganancia desde la entrada requerida para activar
             current_max_profit_percent = ((position.highest_price - position.entry_price) / position.entry_price) * 100.0
@@ -148,8 +159,10 @@ class RiskManager:
         if position.trailing_active and current_price <= position.current_sl_price:
             return "TRAILING_STOP", pnl_amount, pnl_percent
 
-        # C) Stop Loss inicial alcanzado
-        if not position.trailing_active and current_price <= position.current_sl_price:
-            return "STOP_LOSS", pnl_amount, pnl_percent
+        # C) Stop Loss / Breakeven alcanzado
+        if current_price <= position.current_sl_price:
+            exit_name = "BREAKEVEN" if position.current_sl_price > position.entry_price else "STOP_LOSS"
+            return exit_name, pnl_amount, pnl_percent
 
         return None, pnl_amount, pnl_percent
+

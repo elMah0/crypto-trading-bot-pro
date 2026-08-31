@@ -138,3 +138,11 @@ class ExchangeClient:
     def set_simulated_balance(self, amount: float) -> None:
         """Establece explícitamente el balance virtual."""
         self._simulated_balance = float(amount)
+
+    def reconnect_exchange(self, exchange_config: ExchangeConfig) -> None:
+        """Re-inicializa la conexión CCXT con un nuevo exchange o configuración."""
+        self.config = exchange_config
+        self.exchange_name = exchange_config.name.lower()
+        self.client = self._initialize_client()
+        logger.info(f"Cliente de Exchange re-inicializado exitosamente para: {self.exchange_name.upper()}")
+

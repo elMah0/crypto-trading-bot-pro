@@ -87,11 +87,12 @@ class OrderExecutor:
             return None
 
         sl_price, tp_price = self.risk_manager.calculate_initial_levels(current_price)
-        estimated_fee = cost * 0.001  # Estimación 0.1% de comisión estándar
+        fee_rate = (getattr(self.config.risk, "transaction_fee_percent", 0.1)) / 100.0
+        estimated_fee = cost * fee_rate
 
         trade_id: int = 0
         if self.is_dry_run:
-            logger.info(f"[SIMULACIÓN] Compra ejecutada: {amount:.6f} {symbol} a {current_price:.4f} (Costo: {cost:.2f} USDT)")
+            logger.info(f"[SIMULACIÓN] Compra ejecutada: {amount:.6f} {symbol} a {current_price:.4f} (Costo: {cost:.2f} USDT, Fee: {estimated_fee:.4f} USDT)")
             self.client.update_simulated_balance(-cost)
             trade_id = self.db.insert_trade_open(
                 symbol=symbol,
@@ -108,6 +109,7 @@ class OrderExecutor:
                 exec_price = float(order.get("price") or current_price)
                 exec_amount = float(order.get("amount") or amount)
                 cost = exec_price * exec_amount
+                estimated_fee = cost * fee_rate
                 
                 trade_id = self.db.insert_trade_open(
                     symbol=symbol,
@@ -138,7 +140,25 @@ class OrderExecutor:
         )
         self.open_positions[symbol] = pos
 
-        # Enviar notificación audible a Telegram
+        # Emitir notificación asíncrona a WebSockets para Toast en Frontend
+        try:
+            import src.web_server as web_server
+            web_server.broadcast_trade_event({
+                "action": "BUY",
+                "symbol": symbol,
+                "price": current_price,
+                "amount": amount,
+                "cost": cost,
+                "fee": estimated_fee,
+                "sl_price": sl_price,
+                "tp_price": tp_price,
+                "reason": reason,
+                "is_dry_run": self.is_dry_run
+            })
+        except Exception as e:
+            logger.debug(f"No se pudo emitir evento WS: {e}")
+
+        # Enviar notificación a Telegram
         self.notifier.notify_buy_order(
             symbol=symbol,
             price=current_price,
@@ -169,11 +189,17 @@ class OrderExecutor:
             return False
 
         gross_return = pos.amount * current_price
-        fee = gross_return * 0.001
+        fee_rate = (getattr(self.config.risk, "transaction_fee_percent", 0.1)) / 100.0
+        sell_fee = gross_return * fee_rate
+
+        # PnL neto reduciendo comisión de compra + venta
+        net_return = gross_return - sell_fee
+        net_pnl_amount = pnl_amount - (pos.cost * fee_rate + sell_fee)
+        net_pnl_percent = (net_pnl_amount / pos.cost) * 100.0 if pos.cost > 0 else pnl_percent
 
         if self.is_dry_run:
-            logger.info(f"[SIMULACIÓN] Venta ejecutada para {symbol} a {current_price:.4f}. Razón: {exit_reason}, PnL: {pnl_amount:+.2f} USDT ({pnl_percent:+.2f}%)")
-            self.client.update_simulated_balance(gross_return)
+            logger.info(f"[SIMULACIÓN] Venta ejecutada para {symbol} a {current_price:.4f}. Razón: {exit_reason}, PnL Neto: {net_pnl_amount:+.2f} USDT ({net_pnl_percent:+.2f}%), Fee Venta: {sell_fee:.4f} USDT")
+            self.client.update_simulated_balance(net_return)
         else:
             try:
                 logger.info(f"[REAL] Ejecutando orden de venta de mercado para {symbol}: {pos.amount:.6f}")
@@ -186,19 +212,37 @@ class OrderExecutor:
         self.db.close_trade(
             trade_id=pos.trade_id,
             exit_price=current_price,
-            pnl_amount=pnl_amount,
-            pnl_percent=pnl_percent,
+            pnl_amount=net_pnl_amount,
+            pnl_percent=net_pnl_percent,
             exit_reason=exit_reason,
-            fee=fee
+            fee=sell_fee
         )
+
+        # Emitir notificación a WebSockets para Toast emergente en Frontend
+        try:
+            import src.web_server as web_server
+            web_server.broadcast_trade_event({
+                "action": "SELL",
+                "symbol": symbol,
+                "entry_price": pos.entry_price,
+                "exit_price": current_price,
+                "amount": pos.amount,
+                "pnl_amount": net_pnl_amount,
+                "pnl_percent": net_pnl_percent,
+                "exit_reason": exit_reason,
+                "fee": sell_fee,
+                "is_dry_run": self.is_dry_run
+            })
+        except Exception as e:
+            logger.debug(f"No se pudo emitir evento WS de venta: {e}")
 
         # Notificar por Telegram
         self.notifier.notify_sell_order(
             symbol=symbol,
             entry_price=pos.entry_price,
             exit_price=current_price,
-            pnl_amount=pnl_amount,
-            pnl_percent=pnl_percent,
+            pnl_amount=net_pnl_amount,
+            pnl_percent=net_pnl_percent,
             exit_reason=exit_reason,
             is_dry_run=self.is_dry_run
         )
@@ -206,6 +250,7 @@ class OrderExecutor:
         # Eliminar del estado en memoria
         del self.open_positions[symbol]
         return True
+
 
     def check_and_update_positions(self) -> None:
         """

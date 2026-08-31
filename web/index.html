@@ -119,12 +119,12 @@
 
                     <div class="kpi-card">
                         <div class="kpi-icon-wrap icon-risk">
-                            <i class="fa-solid fa-shield-halved"></i>
+                            <i class="fa-solid fa-receipt"></i>
                         </div>
                         <div class="kpi-data">
-                            <span class="kpi-title">Gestión de Riesgo</span>
-                            <h3 class="kpi-value text-accent" id="kpi-risk-status">Normal</h3>
-                            <span class="kpi-sub">Trailing Stop Activo</span>
+                            <span class="kpi-title">Comisiones & Riesgo</span>
+                            <h3 class="kpi-value text-accent" id="kpi-total-fees">0.00 USDT</h3>
+                            <span class="kpi-sub" id="kpi-fee-percent">Fee: 0.10% | Breakeven SL</span>
                         </div>
                     </div>
                 </div>
@@ -229,6 +229,7 @@
                                     <th>Salida</th>
                                     <th>Cantidad</th>
                                     <th>PnL Neto</th>
+                                    <th>Comisión</th>
                                     <th>Razón de Salida</th>
                                     <th>Apertura</th>
                                     <th>Cierre</th>
@@ -236,7 +237,7 @@
                             </thead>
                             <tbody id="trades-table-body">
                                 <tr>
-                                    <td colspan="9" class="text-center">Cargando historial de operaciones...</td>
+                                    <td colspan="10" class="text-center">Cargando historial de operaciones...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -244,74 +245,114 @@
                 </div>
             </section>
 
-            <!-- VISTA 4: CONFIGURACIÓN -->
+            <!-- VISTA 4: CONFIGURACIÓN WEB INTERACTIVA -->
             <section class="tab-pane" id="config-tab">
-                <div class="config-grid">
-                    <div class="panel-card">
-                        <div class="panel-header">
-                            <div class="panel-title">
-                                <i class="fa-solid fa-shield-halved"></i>
-                                <h3>Parámetros de Riesgo & Trailing Stop</h3>
-                            </div>
-                        </div>
-                        <div class="config-form">
-                            <div class="form-group">
-                                <label>Tamaño de Posición (% Balance):</label>
-                                <input type="number" id="cfg-pos-size" step="0.5" min="1" max="100" readonly class="input-readonly">
-                            </div>
-                            <div class="form-group">
-                                <label>Stop Loss Fijo Inicial (%):</label>
-                                <input type="number" id="cfg-sl" step="0.1" readonly class="input-readonly">
-                            </div>
-                            <div class="form-group">
-                                <label>Take Profit Fijo Inicial (%):</label>
-                                <input type="number" id="cfg-tp" step="0.1" readonly class="input-readonly">
-                            </div>
-                            <div class="form-group">
-                                <label>Trailing Stop - Activación (% ganancia):</label>
-                                <input type="number" id="cfg-ts-act" step="0.1" readonly class="input-readonly">
-                            </div>
-                            <div class="form-group">
-                                <label>Trailing Stop - Callback / Retroceso (%):</label>
-                                <input type="number" id="cfg-ts-cb" step="0.1" readonly class="input-readonly">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="panel-card">
-                        <div class="panel-header">
-                            <div class="panel-title">
-                                <i class="fa-solid fa-microchip"></i>
-                                <h3>Parámetros del Sistema</h3>
-                            </div>
-                        </div>
-                        <div class="config-form">
-                            <div class="form-group">
-                                <label>Modo de Operación:</label>
-                                <input type="text" id="cfg-mode" readonly class="input-readonly">
-                            </div>
-                            <div class="form-group">
-                                <label>Moneda Colateral:</label>
-                                <input type="text" id="cfg-quote" readonly class="input-readonly">
-                            </div>
-                            <div class="form-group">
-                                <label>Máximo de Posiciones Concurrentes:</label>
-                                <input type="number" id="cfg-max-trades" readonly class="input-readonly">
-                            </div>
-                            <div class="form-group">
-                                <label>Cortocircuito por Pérdida Diaria (%):</label>
-                                <input type="number" id="cfg-max-daily-loss" readonly class="input-readonly">
-                            </div>
-                            <div class="form-group">
-                                <label>Frecuencia de Escaneo (segundos):</label>
-                                <input type="number" id="cfg-interval" readonly class="input-readonly">
-                            </div>
-                        </div>
-                    </div>
+                <div class="config-banner-title">
+                    <h2><i class="fa-solid fa-sliders"></i> Configuración en Caliente del Bot</h2>
+                    <p>Modifica parámetros de riesgo, comisiones, exchanges y estrategias en vivo sin reiniciar la aplicación.</p>
                 </div>
+
+                <form id="config-form" onsubmit="event.preventDefault();">
+                    <div class="config-grid">
+                        <div class="panel-card">
+                            <div class="panel-header">
+                                <div class="panel-title">
+                                    <i class="fa-solid fa-shield-halved"></i>
+                                    <h3>Gestión de Riesgo & Comisiones</h3>
+                                </div>
+                            </div>
+                            <div class="config-form-content">
+                                <div class="form-group">
+                                    <label for="cfg-tp">Take Profit (%) — Ganancia Objetivo:</label>
+                                    <input type="number" id="cfg-tp" step="0.1" min="0.1" max="100" class="form-control">
+                                    <span class="help-text">Porcentaje de ganancia para cierre automático de orden.</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-sl">Stop Loss (%) — Máxima Pérdida:</label>
+                                    <input type="number" id="cfg-sl" step="0.1" min="0.1" max="50" class="form-control">
+                                    <span class="help-text">Porcentaje máximo de pérdida permitido por orden.</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-fee">Comisión de Transacción (% Fee Exchange):</label>
+                                    <input type="number" id="cfg-fee" step="0.01" min="0" max="5" class="form-control">
+                                    <span class="help-text">Comisión cobrada por tu exchange (ej: 0.1% en Binance).</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-pos-size">Tamaño de Posición (% del Balance Libre):</label>
+                                    <input type="number" id="cfg-pos-size" step="1" min="1" max="100" class="form-control">
+                                    <span class="help-text">Porcentaje de saldo asignado por cada operación.</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-max-trades">Operaciones Máximas Simultáneas:</label>
+                                    <input type="number" id="cfg-max-trades" step="1" min="1" max="10" class="form-control">
+                                </div>
+                                <div class="form-group checkbox-group">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="cfg-enable-breakeven">
+                                        <span>Proteger Entradas con Stop Loss a Breakeven</span>
+                                    </label>
+                                    <span class="help-text">Mueve el Stop Loss al precio de entrada + comisiones una vez en ganancia.</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="panel-card">
+                            <div class="panel-header">
+                                <div class="panel-title">
+                                    <i class="fa-solid fa-building-columns"></i>
+                                    <h3>Exchange & Pares de Trading</h3>
+                                </div>
+                            </div>
+                            <div class="config-form-content">
+                                <div class="form-group">
+                                    <label for="cfg-exchange">Exchange / Plataforma de Trading:</label>
+                                    <select id="cfg-exchange" class="form-control">
+                                        <option value="binance">Binance (Spot)</option>
+                                        <option value="bybit">Bybit</option>
+                                        <option value="kucoin">KuCoin</option>
+                                        <option value="okx">OKX</option>
+                                        <option value="kraken">Kraken</option>
+                                        <option value="bitget">Bitget</option>
+                                        <option value="gateio">Gate.io</option>
+                                    </select>
+                                    <span class="help-text">Conexión multithreaded directa vía API CCXT.</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-mode-dry">Modo de Ejecución:</label>
+                                    <select id="cfg-mode-dry" class="form-control">
+                                        <option value="true">SIMULACIÓN (Dry-Run)</option>
+                                        <option value="false">OPERACIONES REALES (Dinero Real)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-symbols">Pares a Operar (Separados por coma):</label>
+                                    <input type="text" id="cfg-symbols" placeholder="BTC/USDT, ETH/USDT, SOL/USDT" class="form-control">
+                                    <span class="help-text">Ejemplo: BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-ts-act">Trailing Stop - Activación (% ganancia):</label>
+                                    <input type="number" id="cfg-ts-act" step="0.1" min="0.1" class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-ts-cb">Trailing Stop - Retroceso / Callback (%):</label>
+                                    <input type="number" id="cfg-ts-cb" step="0.1" min="0.1" class="form-control">
+                                </div>
+
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-primary btn-save-config" id="btn-save-config">
+                                        <i class="fa-solid fa-floppy-disk"></i> Guardar Cambios en Configuración
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
             </section>
         </main>
     </div>
+
+    <!-- Contenedor Flotante de Notificaciones Emergentes (Toasts) -->
+    <div id="toast-container" class="toast-container"></div>
 
     <!-- Scripts de la aplicación -->
     <script src="/static/js/app.js"></script>

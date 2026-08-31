@@ -251,3 +251,39 @@ class DatabaseManager:
                 1 if is_dry_run else 0
             ))
             conn.commit()
+
+    def get_all_time_stats(self, is_dry_run: bool) -> Dict[str, Any]:
+        """Obtiene métricas acumuladas históricas (total PnL, ganados, perdidos y comisiones)."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as count,
+                    SUM(CASE WHEN pnl_amount > 0 THEN 1 ELSE 0 END) as win_count,
+                    SUM(CASE WHEN pnl_amount < 0 THEN 1 ELSE 0 END) as loss_count,
+                    SUM(pnl_amount) as total_pnl,
+                    SUM(fee) as total_fees
+                FROM trades
+                WHERE is_dry_run = ? AND status = 'CLOSED'
+            """, (1 if is_dry_run else 0,))
+            row = cursor.fetchone()
+            if not row or row["count"] == 0:
+                return {
+                    "count": 0,
+                    "win_count": 0,
+                    "loss_count": 0,
+                    "win_rate": 0.0,
+                    "total_pnl": 0.0,
+                    "total_fees": 0.0
+                }
+            count = int(row["count"])
+            win_count = int(row["win_count"] or 0)
+            return {
+                "count": count,
+                "win_count": win_count,
+                "loss_count": int(row["loss_count"] or 0),
+                "win_rate": (win_count / count) * 100.0 if count > 0 else 0.0,
+                "total_pnl": float(row["total_pnl"] or 0.0),
+                "total_fees": float(row["total_fees"] or 0.0)
+            }
+
