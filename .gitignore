@@ -1,0 +1,25 @@
+# Archivos de entorno y credenciales
+.env
+*.env
+
+# Base de datos SQLite
+*.db
+*.sqlite3
+
+# Python bytecode y caché
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Entornos virtuales
+venv/
+env/
+ENV/
+.venv/
+
+# Logs e IDE
+*.log
+.vscode/
+.idea/
+.DS_Store

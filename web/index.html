@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoBot Pro — Dashboard de Trading Algorítmico</title>
+    <!-- Google Fonts: Inter & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- TradingView Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar de Navegación -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon">
+                    <i class="fa-solid fa-bolt"></i>
+                </div>
+                <div class="brand-info">
+                    <h2>CryptoBot <span class="badge-pro">PRO</span></h2>
+                    <p class="brand-sub">Multi-Timeframe Engine</p>
+                </div>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="dashboard-tab">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </button>
+                <button class="nav-item" data-tab="signals-tab">
+                    <i class="fa-solid fa-satellite-dish"></i>
+                    <span>Señales 1D / 1H</span>
+                </button>
+                <button class="nav-item" data-tab="trades-tab">
+                    <i class="fa-solid fa-receipt"></i>
+                    <span>Historial de Trades</span>
+                </button>
+                <button class="nav-item" data-tab="config-tab">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>Configuración</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="engine-status-box">
+                    <div class="status-indicator-dot online" id="global-status-dot"></div>
+                    <div class="status-texts">
+                        <span class="status-label" id="global-status-text">Motor Operando</span>
+                        <span class="mode-badge" id="mode-badge">SIMULACIÓN</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Contenido Principal -->
+        <main class="main-content">
+            <!-- Header Superior -->
+            <header class="top-header">
+                <div class="header-title">
+                    <h1 id="page-title">Centro de Control Algorítmico</h1>
+                    <p class="subtitle">Estrategia Multitemporal: Macro 10D SMA/ADX + Micro 1H RSI/Volumen</p>
+                </div>
+
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="btn-trigger-scan" title="Forzar escaneo técnico inmediato">
+                        <i class="fa-solid fa-arrows-rotate"></i>
+                        <span>Escanear Ahora</span>
+                    </button>
+                    <button class="btn btn-danger" id="btn-toggle-bot">
+                        <i class="fa-solid fa-pause"></i>
+                        <span id="btn-toggle-text">Pausar Bot</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- VISTA 1: DASHBOARD -->
+            <section class="tab-pane active" id="dashboard-tab">
+                <!-- Métricas Principales (KPI Cards) -->
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-icon-wrap icon-balance">
+                            <i class="fa-solid fa-wallet"></i>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-title">Balance Total</span>
+                            <h3 class="kpi-value" id="kpi-total-balance">1,000.00 <span class="curr">USDT</span></h3>
+                            <span class="kpi-sub" id="kpi-free-balance">Disponible: 1,000.00 USDT</span>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-icon-wrap icon-pnl">
+                            <i class="fa-solid fa-chart-pie"></i>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-title">PnL Hoy (24h)</span>
+                            <h3 class="kpi-value pnl-neutral" id="kpi-daily-pnl">+0.00 USDT</h3>
+                            <span class="kpi-sub" id="kpi-daily-winrate">Win Rate: 0.0%</span>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-icon-wrap icon-trades">
+                            <i class="fa-solid fa-layer-group"></i>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-title">Posiciones Activas</span>
+                            <h3 class="kpi-value" id="kpi-open-positions">0</h3>
+                            <span class="kpi-sub" id="kpi-closed-today">Cerradas hoy: 0</span>
+                        </div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-icon-wrap icon-risk">
+                            <i class="fa-solid fa-shield-halved"></i>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-title">Gestión de Riesgo</span>
+                            <h3 class="kpi-value text-accent" id="kpi-risk-status">Normal</h3>
+                            <span class="kpi-sub">Trailing Stop Activo</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gráfico de Trading Interactivo y Selector de Par -->
+                <div class="chart-section-card">
+                    <div class="chart-header">
+                        <div class="chart-title-box">
+                            <i class="fa-solid fa-chart-candlestick"></i>
+                            <h3 id="current-chart-pair">BTC/USDT</h3>
+                            <span class="timeframe-tag" id="current-timeframe-tag">1H (Micro)</span>
+                        </div>
+                        <div class="chart-controls">
+                            <div class="select-wrapper">
+                                <label for="symbol-selector"><i class="fa-solid fa-coins"></i></label>
+                                <select id="symbol-selector">
+                                    <option value="BTC/USDT">BTC/USDT</option>
+                                    <option value="ETH/USDT">ETH/USDT</option>
+                                    <option value="SOL/USDT">SOL/USDT</option>
+                                </select>
+                            </div>
+                            <div class="timeframe-buttons">
+                                <button class="tf-btn active" data-tf="1h">1H</button>
+                                <button class="tf-btn" data-tf="1d">1D</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-container" id="tv-chart-container"></div>
+                </div>
+
+                <!-- Posiciones Abiertas y Live Log -->
+                <div class="dashboard-split-grid">
+                    <!-- Posiciones Abiertas -->
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <div class="panel-title">
+                                <i class="fa-solid fa-arrow-trend-up"></i>
+                                <h3>Posiciones Abiertas</h3>
+                            </div>
+                            <span class="badge-count" id="badge-open-count">0</span>
+                        </div>
+                        <div class="positions-list" id="positions-list">
+                            <div class="empty-state">
+                                <i class="fa-solid fa-box-open"></i>
+                                <p>No hay posiciones abiertas en este momento.</p>
+                                <span>El bot entrará automáticamente cuando se cumplan los filtros técnicos.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Consola de Logs en Vivo -->
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <div class="panel-title">
+                                <i class="fa-solid fa-terminal"></i>
+                                <h3>Consola de Operaciones en Vivo</h3>
+                            </div>
+                            <button class="btn-clear-logs" id="btn-clear-logs" title="Limpiar Consola">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                        <div class="console-box" id="console-logs">
+                            <div class="log-line info">[SISTEMA] Conectado a la consola de streaming en tiempo real.</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VISTA 2: SEÑALES TÉCNICAS MULTITEMPORALES -->
+            <section class="tab-pane" id="signals-tab">
+                <div class="signals-header-banner">
+                    <div>
+                        <h2>Diagnóstico Técnico Multitemporal</h2>
+                        <p>Evaluación continua en 1D (Tendencia de 10 días + ADX) y 1H (RSI + Confirmación de Volumen).</p>
+                    </div>
+                    <button class="btn btn-secondary" id="btn-refresh-signals">
+                        <i class="fa-solid fa-rotate"></i> Actualizar Análisis
+                    </button>
+                </div>
+
+                <div class="signals-grid" id="signals-cards-grid">
+                    <!-- Cards dinámicas de señales -->
+                </div>
+            </section>
+
+            <!-- VISTA 3: HISTORIAL DE TRADES -->
+            <section class="tab-pane" id="trades-tab">
+                <div class="panel-card">
+                    <div class="panel-header">
+                        <div class="panel-title">
+                            <i class="fa-solid fa-clock-rotate-left"></i>
+                            <h3>Registro Histórico de Operaciones (SQLite)</h3>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="trades-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Símbolo</th>
+                                    <th>Entrada</th>
+                                    <th>Salida</th>
+                                    <th>Cantidad</th>
+                                    <th>PnL Neto</th>
+                                    <th>Razón de Salida</th>
+                                    <th>Apertura</th>
+                                    <th>Cierre</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trades-table-body">
+                                <tr>
+                                    <td colspan="9" class="text-center">Cargando historial de operaciones...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- VISTA 4: CONFIGURACIÓN -->
+            <section class="tab-pane" id="config-tab">
+                <div class="config-grid">
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <div class="panel-title">
+                                <i class="fa-solid fa-shield-halved"></i>
+                                <h3>Parámetros de Riesgo & Trailing Stop</h3>
+                            </div>
+                        </div>
+                        <div class="config-form">
+                            <div class="form-group">
+                                <label>Tamaño de Posición (% Balance):</label>
+                                <input type="number" id="cfg-pos-size" step="0.5" min="1" max="100" readonly class="input-readonly">
+                            </div>
+                            <div class="form-group">
+                                <label>Stop Loss Fijo Inicial (%):</label>
+                                <input type="number" id="cfg-sl" step="0.1" readonly class="input-readonly">
+                            </div>
+                            <div class="form-group">
+                                <label>Take Profit Fijo Inicial (%):</label>
+                                <input type="number" id="cfg-tp" step="0.1" readonly class="input-readonly">
+                            </div>
+                            <div class="form-group">
+                                <label>Trailing Stop - Activación (% ganancia):</label>
+                                <input type="number" id="cfg-ts-act" step="0.1" readonly class="input-readonly">
+                            </div>
+                            <div class="form-group">
+                                <label>Trailing Stop - Callback / Retroceso (%):</label>
+                                <input type="number" id="cfg-ts-cb" step="0.1" readonly class="input-readonly">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <div class="panel-title">
+                                <i class="fa-solid fa-microchip"></i>
+                                <h3>Parámetros del Sistema</h3>
+                            </div>
+                        </div>
+                        <div class="config-form">
+                            <div class="form-group">
+                                <label>Modo de Operación:</label>
+                                <input type="text" id="cfg-mode" readonly class="input-readonly">
+                            </div>
+                            <div class="form-group">
+                                <label>Moneda Colateral:</label>
+                                <input type="text" id="cfg-quote" readonly class="input-readonly">
+                            </div>
+                            <div class="form-group">
+                                <label>Máximo de Posiciones Concurrentes:</label>
+                                <input type="number" id="cfg-max-trades" readonly class="input-readonly">
+                            </div>
+                            <div class="form-group">
+                                <label>Cortocircuito por Pérdida Diaria (%):</label>
+                                <input type="number" id="cfg-max-daily-loss" readonly class="input-readonly">
+                            </div>
+                            <div class="form-group">
+                                <label>Frecuencia de Escaneo (segundos):</label>
+                                <input type="number" id="cfg-interval" readonly class="input-readonly">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Scripts de la aplicación -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

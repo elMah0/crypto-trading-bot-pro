@@ -1,0 +1,76 @@
+# ==============================================================================
+# CONFIGURACIÓN PRINCIPAL - BOT DE TRADING ALGORÍTMICO MULTITEMPORAL
+# ==============================================================================
+
+# Modo de operación
+mode:
+  dry_run: true               # true: simulación virtual con dinero real del exchange, false: operaciones reales
+  initial_simulated_balance: 200.0   # Capital inicial simulado fijado en 200 USD / USDT
+  quote_currency: "USDT"      # Moneda base de cotización / colateral
+
+# Configuración del Exchange
+exchange:
+  name: "binance"             # Conexión directa a mercado real de Binance vía CCXT
+  testnet: false              # Usar datos reales de mercado (Spot)
+  rate_limit_delay_ms: 250    # Retardo preventivo entre llamadas API
+  timeout_seconds: 30         # Timeout de peticiones de red
+  max_retries: 3              # Reintentos automáticos
+
+# Pares a operar en mercado real
+symbols:
+  - "BTC/USDT"
+  - "ETH/USDT"
+  - "SOL/USDT"
+  - "BNB/USDT"
+  - "XRP/USDT"
+
+# Estrategia Técnica Multitemporal Optimizada
+strategy:
+  macro:
+    timeframe: "1d"           # Marco macro para análisis de tendencia (10 días)
+    limit_candles: 30         # Velas históricas de 1D
+    sma_period: 10            # Media Móvil Simple de 10 días
+    adx_period: 14            # ADX de 14 períodos
+    adx_min_strength: 18.0    # Umbral de fuerza de tendencia dinámico (>= 18)
+  
+  micro:
+    timeframe: "1h"           # Marco micro para sincronizar entradas óptimas
+    limit_candles: 60         # Velas históricas de 1 hora
+    rsi_period: 14            # RSI de 14 períodos
+    rsi_max_entry: 62.0       # Evitar zonas de sobrecompra (> 62)
+    rsi_min_entry: 30.0       # Evitar cuchillos cayendo sin rebote
+    volume_sma_period: 10     # Período de volumen promedio
+    volume_factor: 0.85       # Factor de volumen flexible para capturar entradas con liquidez
+
+# Gestión de Riesgo y Control de Posiciones (Ajustado para 200 USD)
+risk:
+  position_size_percent: 30.0   # Asignar ~30% del balance por operación (~60 USD por trade con 200 USD)
+  max_concurrent_trades: 3      # Máximo 3 operaciones simultáneas
+  stop_loss_percent: 1.8        # Stop Loss ajustado al 1.8%
+  take_profit_percent: 3.6      # Take Profit 1:2 R:R (3.6%)
+  
+  # Trailing Stop Loss Dinámico (Maximización de Ganancias)
+  trailing_stop:
+    enabled: true
+    activation_profit_percent: 1.2   # Al llegar a +1.2% de ganancia se activa el trailing stop para asegurar ganancia
+    callback_percent: 0.8            # Retroceso máximo permitido de 0.8% antes de asegurar beneficios
+  
+  # Cortocircuitos de Seguridad
+  circuit_breaker:
+    max_daily_loss_percent: 6.0     # Protección de capital ante rachas desfavorables
+    sl_cooldown_hours: 2             # 2 horas de enfriamiento por par tras Stop Loss
+
+# Notificaciones y Reportes en Telegram
+telegram:
+  enabled: true
+  send_heartbeat: true              # Enviar chequeo periódico de estado
+  heartbeat_interval_minutes: 60    # Intervalo de envío de chequeo silencioso
+  daily_report_hour: "20:00"        # Hora (formato 24h, ej. 20:00) para el reporte diario detallado
+
+# Base de Datos
+database:
+  db_path: "trading_bot.db"         # Ruta del archivo SQLite
+
+# Intervalos de Loop del Bot
+bot_loop:
+  check_interval_seconds: 60        # Frecuencia de escaneo de señales y actualización de posiciones
