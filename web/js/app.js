@@ -42,9 +42,11 @@ document.addEventListener("DOMContentLoaded", () => {
     let candleSeries = null;
     let smaLineSeries = null;
     let volumeSeries = null;
+    let activePriceLines = [];
     let currentSelectedSymbol = "BTC/USDT";
     let currentSelectedTf = "1h";
     let isBotRunning = true;
+    let latestOpenPositions = [];
 
     // ==========================================
     // 1. GESTIÓN DE TABS
@@ -153,6 +155,17 @@ document.addEventListener("DOMContentLoaded", () => {
         loadChartData();
     }
 
+    function clearPriceLines() {
+        if (candleSeries && activePriceLines.length > 0) {
+            activePriceLines.forEach(line => {
+                try {
+                    candleSeries.removePriceLine(line);
+                } catch (e) {}
+            });
+            activePriceLines = [];
+        }
+    }
+
     async function loadChartData() {
         if (!chartInstance) return;
         try {
@@ -160,10 +173,50 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!res.ok) return;
             const data = await res.json();
 
+            clearPriceLines();
+
             if (data.candles && data.candles.length > 0) {
                 candleSeries.setData(data.candles);
                 if (data.sma && data.sma.length > 0) smaLineSeries.setData(data.sma);
                 if (data.volume && data.volume.length > 0) volumeSeries.setData(data.volume);
+
+                // Establecer marcas de compra / venta en el gráfico
+                if (data.markers && data.markers.length > 0) {
+                    candleSeries.setMarkers(data.markers);
+                } else {
+                    candleSeries.setMarkers([]);
+                }
+
+                // Si hay una posición abierta activa para este símbolo, dibujar líneas de precio (Entrada, SL, TP)
+                const openPos = latestOpenPositions.find(p => p.symbol === currentSelectedSymbol);
+                if (openPos) {
+                    const entryLine = candleSeries.createPriceLine({
+                        price: openPos.entry_price,
+                        color: "#10B981",
+                        lineWidth: 2,
+                        lineStyle: LightweightCharts.LineStyle.Dashed,
+                        axisLabelVisible: true,
+                        title: "ENTRADA",
+                    });
+                    const slLine = candleSeries.createPriceLine({
+                        price: openPos.current_sl_price,
+                        color: "#EF4444",
+                        lineWidth: 2,
+                        lineStyle: LightweightCharts.LineStyle.Solid,
+                        axisLabelVisible: true,
+                        title: "STOP LOSS",
+                    });
+                    const tpLine = candleSeries.createPriceLine({
+                        price: openPos.tp_price,
+                        color: "#3B82F6",
+                        lineWidth: 2,
+                        lineStyle: LightweightCharts.LineStyle.Solid,
+                        axisLabelVisible: true,
+                        title: "TAKE PROFIT",
+                    });
+                    activePriceLines.push(entryLine, slLine, tpLine);
+                }
+
                 chartInstance.timeScale().fitContent();
             }
         } catch (err) {
@@ -188,6 +241,29 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    window.selectPositionOnChart = (symbol) => {
+        currentSelectedSymbol = symbol;
+        if (symbolSelector) {
+            symbolSelector.value = symbol;
+            // Si el símbolo no está en el selector, agregarlo temporalmente
+            if (symbolSelector.value !== symbol) {
+                const opt = document.createElement("option");
+                opt.value = symbol;
+                opt.textContent = symbol;
+                symbolSelector.appendChild(opt);
+                symbolSelector.value = symbol;
+            }
+        }
+        if (currentChartPair) currentChartPair.textContent = symbol;
+        loadChartData();
+
+        // Desplazar vista al gráfico
+        const chartCard = document.querySelector(".chart-section-card");
+        if (chartCard) {
+            chartCard.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+    };
+
     // ==========================================
     // 3. CONSULTA DE ESTADO Y MÉTRICAS (POLLING)
     // ==========================================
@@ -198,6 +274,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
 
             isBotRunning = data.is_running;
+            latestOpenPositions = data.open_positions || [];
 
             // Actualizar controles de estado
             if (isBotRunning) {
@@ -227,7 +304,7 @@ document.addEventListener("DOMContentLoaded", () => {
             kpiDailyPnl.className = `kpi-value ${pnl > 0 ? 'pnl-positive' : pnl < 0 ? 'pnl-negative' : 'pnl-neutral'}`;
             kpiDailyWinrate.textContent = `Win Rate: ${(summary.win_rate || 0).toFixed(1)}% (${summary.win_count || 0}W / ${summary.loss_count || 0}L)`;
 
-            kpiOpenPositions.textContent = data.open_positions ? data.open_positions.length : 0;
+            kpiOpenPositions.textContent = latestOpenPositions.length;
             kpiClosedToday.textContent = `Cerradas hoy: ${summary.count || 0}`;
 
             // Métricas de Comisiones y Riesgo
@@ -241,8 +318,24 @@ document.addEventListener("DOMContentLoaded", () => {
                 kpiFeePercent.textContent = `Fee: ${data.transaction_fee_percent.toFixed(2)}% | Exchange: ${data.exchange}`;
             }
 
+            if (data.symbols && data.symbols.length > 0 && symbolSelector) {
+                const currentVal = symbolSelector.value || currentSelectedSymbol;
+                const existingOptions = Array.from(symbolSelector.options).map(o => o.value);
+                data.symbols.forEach(sym => {
+                    if (!existingOptions.includes(sym)) {
+                        const opt = document.createElement("option");
+                        opt.value = sym;
+                        opt.textContent = sym;
+                        symbolSelector.appendChild(opt);
+                    }
+                });
+                if (existingOptions.includes(currentVal)) {
+                    symbolSelector.value = currentVal;
+                }
+            }
+
             // Renderizar Posiciones Abiertas
-            renderPositions(data.open_positions || []);
+            renderPositions(latestOpenPositions);
 
         } catch (err) {
             console.error("Error consultando estado:", err);
@@ -268,26 +361,28 @@ document.addEventListener("DOMContentLoaded", () => {
             const pnlClass = pos.pnl_amount >= 0 ? "pnl-positive" : "pnl-negative";
             const pnlSign = pos.pnl_amount >= 0 ? "+" : "";
             const trailingTag = pos.trailing_active ? `<span class="badge-pro" style="background:#10B981;color:#fff;">Trailing ON</span>` : "";
+            const activeHighlight = pos.symbol === currentSelectedSymbol ? 'style="border-color:#3B82F6; background: rgba(59,130,246,0.08);"' : '';
 
             html += `
-                <div class="position-item-card">
+                <div class="position-item-card" ${activeHighlight} onclick="window.selectPositionOnChart('${pos.symbol}')" title="Haz clic para ver esta posición en el gráfico">
                     <div class="pos-info">
                         <div class="pos-info-header">
                             <span class="pos-symbol">${pos.symbol}</span>
                             <span class="pos-badge-buy">COMPRA</span>
                             ${trailingTag}
+                            <span class="badge-pro" style="background:rgba(255,255,255,0.06);color:#9CA3AF;font-size:10px;"><i class="fa-solid fa-chart-line"></i> Ver Gráfico</span>
                         </div>
                         <div class="pos-details">
                             Entrada: <b>${pos.entry_price.toFixed(4)}</b> | Actual: <b>${pos.current_price.toFixed(4)}</b><br>
-                            SL: <b>${pos.current_sl_price.toFixed(4)}</b> | TP: <b>${pos.tp_price.toFixed(4)}</b>
+                            SL: <b style="color:#EF4444;">${pos.current_sl_price.toFixed(4)}</b> | TP: <b style="color:#3B82F6;">${pos.tp_price.toFixed(4)}</b>
                         </div>
                     </div>
                     <div class="pos-pnl-box">
                         <span class="pos-pnl-val ${pnlClass}">
                             ${pnlSign}${pos.pnl_amount.toFixed(2)} USDT (${pnlSign}${pos.pnl_percent.toFixed(2)}%)
                         </span>
-                        <button class="btn-close-pos" onclick="window.closePosition('${pos.symbol.replace('/', '-')}')">
-                            Cerrar Posición
+                        <button class="btn-close-pos" onclick="event.stopPropagation(); window.closePosition('${pos.symbol.replace('/', '-')}')">
+                            Cerrar
                         </button>
                     </div>
                 </div>
@@ -295,6 +390,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         positionsList.innerHTML = html;
     }
+
 
     window.closePosition = async (symEscaped) => {
         if (!confirm(`¿Estás seguro de cerrar la posición de ${symEscaped}?`)) return;

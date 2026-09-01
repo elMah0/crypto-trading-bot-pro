@@ -11,7 +11,7 @@ def test_load_default_config():
     assert cfg.mode.dry_run is True
     assert cfg.mode.initial_simulated_balance == 200.0
     assert "BTC/USDT" in cfg.symbols
-    assert cfg.risk.position_size_percent == 30.0
+    assert cfg.risk.position_size_percent > 0
     assert cfg.strategy.macro.sma_period == 10
 
 

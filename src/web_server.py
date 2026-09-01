@@ -271,16 +271,85 @@ def get_candles(symbol: str = "BTC/USDT", timeframe: str = "1h", limit: int = 60
                 "color": color
             })
 
+        return_markers = []
+        try:
+            with bot_orchestrator.db._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT * FROM trades 
+                    WHERE symbol = ? AND is_dry_run = ?
+                    ORDER BY id ASC
+                """, (symbol, 1 if bot_orchestrator.config.mode.dry_run else 0))
+                rows = cursor.fetchall()
+                symbol_trades = [dict(r) for r in rows]
+
+            if symbol_trades and candles:
+                candle_times = [c["time"] for c in candles]
+                min_candle_time = candle_times[0]
+
+                def find_nearest_candle_time(target_ts):
+                    nearest = min_candle_time
+                    for ct in candle_times:
+                        if ct <= target_ts:
+                            nearest = ct
+                        else:
+                            break
+                    return nearest
+
+                for t in symbol_trades:
+                    opened_at_str = t.get("opened_at")
+                    if opened_at_str:
+                        try:
+                            dt_open = datetime.fromisoformat(opened_at_str)
+                            open_ts = int(dt_open.timestamp())
+                            if open_ts >= min_candle_time - 86400:
+                                mapped_time = find_nearest_candle_time(open_ts)
+                                return_markers.append({
+                                    "time": mapped_time,
+                                    "position": "belowBar",
+                                    "color": "#10B981",
+                                    "shape": "arrowUp",
+                                    "text": f"BUY @ {t['entry_price']:.2f}"
+                                })
+                        except Exception:
+                            pass
+
+                    if t.get("status") == "CLOSED" and t.get("closed_at"):
+                        try:
+                            dt_close = datetime.fromisoformat(t["closed_at"])
+                            close_ts = int(dt_close.timestamp())
+                            if close_ts >= min_candle_time - 86400:
+                                mapped_time = find_nearest_candle_time(close_ts)
+                                pnl = t.get("pnl_amount") or 0.0
+                                color = "#3B82F6" if pnl >= 0 else "#EF4444"
+                                reason = t.get("exit_reason") or "SELL"
+                                exit_p = t.get("exit_price") or 0.0
+                                return_markers.append({
+                                    "time": mapped_time,
+                                    "position": "aboveBar",
+                                    "color": color,
+                                    "shape": "arrowDown",
+                                    "text": f"SELL ({reason}) @ {exit_p:.2f}"
+                                })
+                        except Exception:
+                            pass
+
+                return_markers.sort(key=lambda x: (x["time"], 0 if x["position"] == "belowBar" else 1))
+        except Exception as e:
+            logger.warning(f"Error generando marcas de gráfico para {symbol}: {e}")
+
         return {
             "symbol": symbol,
             "timeframe": timeframe,
             "candles": candles,
             "sma": sma_points,
-            "volume": volume_bars
+            "volume": volume_bars,
+            "markers": return_markers
         }
     except Exception as e:
         logger.error(f"Error obteniendo velas de {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.post("/api/bot/start")
