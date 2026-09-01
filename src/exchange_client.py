@@ -36,7 +36,10 @@ class ExchangeClient:
             "timeout": self.config.timeout_seconds * 1000,
         }
 
-        if self.config.api_key and self.config.api_secret:
+        # Solo adjuntar credenciales privadas si NO estamos en simulación (dry_run) 
+        # y la secret key no es una plantilla por defecto
+        is_placeholder_secret = not self.config.api_secret or "tu_api_secret" in str(self.config.api_secret).lower() or len(str(self.config.api_secret)) < 10
+        if not self.mode.dry_run and self.config.api_key and not is_placeholder_secret:
             options["apiKey"] = self.config.api_key
             options["secret"] = self.config.api_secret
             if self.config.password:
