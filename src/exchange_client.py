@@ -124,6 +124,14 @@ class ExchangeClient:
             balance_data = self.client.fetch_balance()
             free_balance = balance_data.get("free", {}).get(target_currency, 0.0)
             return float(free_balance)
+        except ccxt.AuthenticationError:
+            msg = (
+                f"No se pudieron consultar credenciales API para '{self.exchange_name.upper()}'. "
+                "Para operar en MODO REAL debes configurar EXCHANGE_API_KEY y EXCHANGE_API_SECRET en tu archivo .env "
+                "o cambiar a MODO SIMULACIÓN (dry_run: true) en la configuración."
+            )
+            logger.error(msg)
+            raise ValueError(msg)
         except Exception as e:
             logger.error(f"Error consultando balance real en el exchange: {e}")
             raise

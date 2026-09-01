@@ -15,7 +15,6 @@ symbols:
 - SOL/USDT
 - BNB/USDT
 - XRP/USDT
-- TSLAB/USDT
 strategy:
   macro:
     timeframe: 1d
