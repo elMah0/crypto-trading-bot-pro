@@ -113,8 +113,14 @@ def get_bot_status():
     if not bot_orchestrator:
         raise HTTPException(status_code=503, detail="Orquestador no inicializado")
 
-    free_balance = bot_orchestrator.exchange_client.get_free_balance()
-    total_balance = bot_orchestrator.order_executor.get_total_portfolio_value()
+    try:
+        free_balance = bot_orchestrator.exchange_client.get_free_balance()
+        total_balance = bot_orchestrator.order_executor.get_total_portfolio_value()
+    except Exception as e:
+        logger.warning(f"No se pudo consultar balance del exchange: {e}")
+        free_balance = 0.0
+        total_balance = 0.0
+
     open_positions = []
 
     for sym, pos in bot_orchestrator.order_executor.open_positions.items():
@@ -467,6 +473,15 @@ def update_config(req: ConfigUpdateRequest):
     cfg = bot_orchestrator.config
 
     if req.dry_run is not None:
+        if req.dry_run is False:
+            secret = cfg.exchange.api_secret or os.getenv("EXCHANGE_API_SECRET")
+            key = cfg.exchange.api_key or os.getenv("EXCHANGE_API_KEY")
+            is_placeholder = not secret or "tu_api_secret" in str(secret).lower() or len(str(secret)) < 10
+            if not key or is_placeholder:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se puede activar el MODO REAL sin configurar EXCHANGE_API_KEY y EXCHANGE_API_SECRET en tu archivo .env. Mantén el modo Simulación."
+                )
         cfg.mode.dry_run = req.dry_run
         bot_orchestrator.order_executor.is_dry_run = req.dry_run
 
