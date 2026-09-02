@@ -750,16 +750,25 @@ document.addEventListener("DOMContentLoaded", () => {
     const chatSendBtn = document.getElementById("ai-chat-send-btn");
 
     if (chatToggleBtn && chatWindow) {
-        chatToggleBtn.addEventListener("click", () => {
-            chatWindow.classList.toggle("hidden");
-            if (!chatWindow.classList.contains("hidden")) {
-                chatInput.focus();
+        chatToggleBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (chatWindow.style.display === "none" || chatWindow.classList.contains("hidden")) {
+                chatWindow.style.display = "flex";
+                chatWindow.classList.remove("hidden");
+                if (chatInput) chatInput.focus();
+            } else {
+                chatWindow.style.display = "none";
+                chatWindow.classList.add("hidden");
             }
         });
     }
 
     if (chatCloseBtn && chatWindow) {
-        chatCloseBtn.addEventListener("click", () => {
+        chatCloseBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            chatWindow.style.display = "none";
             chatWindow.classList.add("hidden");
         });
     }
@@ -832,7 +841,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     window.sendQuickChatMessage = function(promptText) {
-        if (chatWindow && chatWindow.classList.contains("hidden")) {
+        if (chatWindow) {
+            chatWindow.style.display = "flex";
             chatWindow.classList.remove("hidden");
         }
         sendChatMessage(promptText);

@@ -354,18 +354,18 @@
 
     <!-- AI Copilot Chat Drawer Widget -->
     <div id="ai-chat-widget" class="ai-chat-widget">
-        <button id="ai-chat-toggle-btn" class="ai-chat-toggle-btn" title="Abrir Copiloto AI">
+        <button id="ai-chat-toggle-btn" class="ai-chat-toggle-btn" title="Abrir Copiloto AI" style="position: fixed; bottom: 28px; right: 28px; z-index: 999999; cursor: pointer;">
             <i class="fa-solid fa-robot"></i>
             <span class="ai-badge-dot"></span>
         </button>
 
-        <div id="ai-chat-window" class="ai-chat-window hidden">
+        <div id="ai-chat-window" class="ai-chat-window hidden" style="display: none;">
             <div class="ai-chat-header">
                 <div class="ai-chat-title">
                     <i class="fa-solid fa-brain"></i>
                     <span>CryptoBot Copilot AI</span>
                 </div>
-                <button id="ai-chat-close-btn" class="ai-chat-close-btn"><i class="fa-solid fa-xmark"></i></button>
+                <button id="ai-chat-close-btn" class="ai-chat-close-btn" title="Cerrar"><i class="fa-solid fa-xmark"></i></button>
             </div>
 
             <div class="ai-chat-body" id="ai-chat-messages">
@@ -378,14 +378,14 @@
             </div>
 
             <div class="ai-chat-chips">
-                <button class="chat-chip" onclick="sendQuickChatMessage('🚀 Busca las criptos con mayor alza hoy en Binance')">🚀 Top Gainers Binance</button>
-                <button class="chat-chip" onclick="sendQuickChatMessage('📊 Resumen completo de mi portafolio y saldo')">📊 Saldo & Portafolio</button>
-                <button class="chat-chip" onclick="sendQuickChatMessage('⚙️ Cambia el tamaño de posición al 5%')">⚙️ Posición a 5%</button>
+                <button type="button" class="chat-chip" onclick="window.sendQuickChatMessage('🚀 Busca las criptos con mayor alza hoy en Binance')">🚀 Top Gainers Binance</button>
+                <button type="button" class="chat-chip" onclick="window.sendQuickChatMessage('📊 Resumen completo de mi portafolio y saldo')">📊 Saldo & Portafolio</button>
+                <button type="button" class="chat-chip" onclick="window.sendQuickChatMessage('⚙️ Cambia el tamaño de posición al 5%')">⚙️ Posición a 5%</button>
             </div>
 
             <div class="ai-chat-footer">
                 <input type="text" id="ai-chat-input" placeholder="Pregunta o instruye a la IA..." autocomplete="off">
-                <button id="ai-chat-send-btn" class="btn-send-chat"><i class="fa-solid fa-paper-plane"></i></button>
+                <button type="button" id="ai-chat-send-btn" class="btn-send-chat"><i class="fa-solid fa-paper-plane"></i></button>
             </div>
         </div>
     </div>
