@@ -42,10 +42,17 @@ class ExchangeClient:
         if not self.mode.dry_run and self.config.api_key and not is_placeholder_secret:
             options["apiKey"] = self.config.api_key
             options["secret"] = self.config.api_secret
+            options["options"] = {"adjustForTimeDifference": True, "recvWindow": 10000}
             if self.config.password:
                 options["password"] = self.config.password
 
         client: ccxt.Exchange = exchange_class(options)
+
+        if not self.mode.dry_run and hasattr(client, "load_time_difference"):
+            try:
+                client.load_time_difference()
+            except Exception as e:
+                logger.warning(f"No se pudo sincronizar diferencia de tiempo del servidor: {e}")
 
         if self.config.testnet:
             if hasattr(client, "set_sandbox_mode"):

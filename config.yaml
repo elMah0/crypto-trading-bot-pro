@@ -1,5 +1,5 @@
 mode:
-  dry_run: false
+  dry_run: true
   initial_simulated_balance: 200.0
   quote_currency: USDT
 exchange:
