@@ -152,7 +152,13 @@ def get_bot_status():
             "trailing_active": pos.trailing_active,
             "pnl_amount": pnl_amount,
             "pnl_percent": pnl_percent,
-            "opened_at": pos.opened_at
+            "opened_at": pos.opened_at,
+            "stop_loss_percent": pos.stop_loss_percent,
+            "take_profit_percent": pos.take_profit_percent,
+            "trailing_stop_enabled": pos.trailing_stop_enabled,
+            "trailing_activation_percent": pos.trailing_activation_percent,
+            "trailing_callback_percent": pos.trailing_callback_percent,
+            "enable_breakeven": pos.enable_breakeven
         })
 
     today_summary = bot_orchestrator.db.get_trades_summary_today(
@@ -545,6 +551,50 @@ def update_config(req: ConfigUpdateRequest):
 
     logger.info("Configuración del bot actualizada dinámicamente desde la interfaz Web.")
     return {"success": True, "message": "Configuración actualizada y guardada correctamente"}
+
+
+class PositionConfigRequest(BaseModel):
+    take_profit_percent: Optional[float] = None
+    stop_loss_percent: Optional[float] = None
+    trailing_stop_enabled: Optional[bool] = None
+    trailing_activation_percent: Optional[float] = None
+    trailing_callback_percent: Optional[float] = None
+    enable_breakeven: Optional[bool] = None
+
+
+@app.post("/api/positions/{symbol_slug}/config")
+def update_individual_position_config(symbol_slug: str, req: PositionConfigRequest):
+    """Actualiza en caliente los parámetros de riesgo individuales de una posición abierta."""
+    if not bot_orchestrator:
+        raise HTTPException(status_code=503, detail="Orquestador no inicializado")
+
+    symbol = symbol_slug.replace("-", "/")
+    success = bot_orchestrator.order_executor.update_position_parameters(
+        symbol=symbol,
+        take_profit_percent=req.take_profit_percent,
+        stop_loss_percent=req.stop_loss_percent,
+        trailing_activation_percent=req.trailing_activation_percent,
+        trailing_callback_percent=req.trailing_callback_percent,
+        enable_breakeven=req.enable_breakeven
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail=f"No se encontró una posición activa para {symbol}")
+
+    return {"status": "success", "message": f"Parámetros actualizados exitosamente para {symbol}"}
+
+
+@app.post("/api/positions/{symbol_slug}/close")
+def close_individual_position(symbol_slug: str):
+    """Cierra inmediatamente una posición abierta específica a precio de mercado."""
+    if not bot_orchestrator:
+        raise HTTPException(status_code=503, detail="Orquestador no inicializado")
+
+    symbol = symbol_slug.replace("-", "/")
+    success = bot_orchestrator.order_executor.close_position_by_symbol(symbol, reason="Cierre Manual Web GUI")
+    if not success:
+        raise HTTPException(status_code=404, detail=f"No se pudo cerrar la posición para {symbol} (puede que ya esté cerrada)")
+
+    return {"status": "success", "message": f"Posición {symbol} cerrada exitosamente"}
 
 
 @app.post("/api/chat")

@@ -377,11 +377,14 @@ document.addEventListener("DOMContentLoaded", () => {
                             SL: <b style="color:#EF4444;">${pos.current_sl_price.toFixed(4)}</b> | TP: <b style="color:#3B82F6;">${pos.tp_price.toFixed(4)}</b>
                         </div>
                     </div>
-                    <div class="pos-pnl-box">
+                    <div class="pos-pnl-box" style="display: flex; align-items: center; gap: 8px;">
                         <span class="pos-pnl-val ${pnlClass}">
                             ${pnlSign}${pos.pnl_amount.toFixed(2)} USDT (${pnlSign}${pos.pnl_percent.toFixed(2)}%)
                         </span>
-                        <button class="btn-close-pos" onclick="event.stopPropagation(); window.closePosition('${pos.symbol.replace('/', '-')}')">
+                        <button type="button" class="btn-config-pos" onclick="event.stopPropagation(); window.openPositionConfigModal('${pos.symbol}')" title="Configurar parámetros de esta posición">
+                            <i class="fa-solid fa-gear"></i>
+                        </button>
+                        <button type="button" class="btn-close-pos" onclick="event.stopPropagation(); window.closePosition('${pos.symbol.replace('/', '-')}')" title="Cerrar posición a mercado">
                             Cerrar
                         </button>
                     </div>
@@ -391,21 +394,98 @@ document.addEventListener("DOMContentLoaded", () => {
         positionsList.innerHTML = html;
     }
 
+    // ==========================================
+    // MODAL DE CONFIGURACIÓN AISLADA POR POSICIÓN
+    // ==========================================
+    window.openPositionConfigModal = (symbol) => {
+        const modal = document.getElementById("position-config-modal");
+        const pos = latestOpenPositions.find(p => p.symbol === symbol);
+        if (!modal || !pos) return;
 
-    window.closePosition = async (symEscaped) => {
-        if (!confirm(`¿Estás seguro de cerrar la posición de ${symEscaped}?`)) return;
+        document.getElementById("modal-pos-symbol").textContent = pos.symbol;
+        document.getElementById("modal-pos-symbol-input").value = pos.symbol;
+        document.getElementById("modal-pos-tp").value = pos.take_profit_percent || 2.0;
+        document.getElementById("modal-pos-sl").value = pos.stop_loss_percent || 1.5;
+        document.getElementById("modal-pos-ts-act").value = pos.trailing_activation_percent || 1.2;
+        document.getElementById("modal-pos-ts-cb").value = pos.trailing_callback_percent || 0.8;
+        document.getElementById("modal-pos-enable-ts").checked = pos.trailing_stop_enabled !== false;
+        document.getElementById("modal-pos-enable-breakeven").checked = pos.enable_breakeven !== false;
+
+        modal.style.display = "flex";
+        modal.classList.remove("hidden");
+    };
+
+    window.closePositionConfigModal = () => {
+        const modal = document.getElementById("position-config-modal");
+        if (modal) {
+            modal.style.display = "none";
+            modal.classList.add("hidden");
+        }
+    };
+
+    window.savePositionConfig = async () => {
+        const sym = document.getElementById("modal-pos-symbol-input").value;
+        if (!sym) return;
+
+        const payload = {
+            take_profit_percent: parseFloat(document.getElementById("modal-pos-tp").value),
+            stop_loss_percent: parseFloat(document.getElementById("modal-pos-sl").value),
+            trailing_activation_percent: parseFloat(document.getElementById("modal-pos-ts-act").value),
+            trailing_callback_percent: parseFloat(document.getElementById("modal-pos-ts-cb").value),
+            trailing_stop_enabled: document.getElementById("modal-pos-enable-ts").checked,
+            enable_breakeven: document.getElementById("modal-pos-enable-breakeven").checked
+        };
+
+        const btnSave = document.getElementById("btn-save-pos-config");
+        if (btnSave) {
+            btnSave.disabled = true;
+            btnSave.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Guardando...`;
+        }
+
         try {
-            const res = await fetch(`/api/position/close/${symEscaped}`, { method: "POST" });
+            const symSlug = sym.replace("/", "-");
+            const res = await fetch(`/api/positions/${symSlug}/config`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
             const data = await res.json();
             if (res.ok) {
-                appendLog("info", `[MANUAL] ${data.message}`);
+                showToast("success", "Parámetros de Posición Guardados", `Configuración aislada para ${sym} actualizada correctamente.`);
+                window.closePositionConfigModal();
                 fetchStatus();
                 loadChartData();
             } else {
-                alert(`Error: ${data.detail || data.message}`);
+                showToast("error", "Error", data.detail || "No se pudo actualizar la posición.");
+            }
+        } catch (err) {
+            console.error("Error guardando posición:", err);
+            showToast("error", "Error de red", "No se pudo conectar con el servidor.");
+        } finally {
+            if (btnSave) {
+                btnSave.disabled = false;
+                btnSave.innerHTML = `<i class="fa-solid fa-check"></i> Aplicar a esta Posición`;
+            }
+        }
+    };
+
+    window.closePosition = async (symEscaped) => {
+        const rawSym = symEscaped.replace("-", "/");
+        if (!confirm(`¿Estás seguro de cerrar la posición de ${rawSym}?`)) return;
+        try {
+            const res = await fetch(`/api/positions/${symEscaped}/close`, { method: "POST" });
+            const data = await res.json();
+            if (res.ok) {
+                showToast("success", "Posición Cerrada", data.message || `Posición ${rawSym} cerrada con éxito.`);
+                fetchStatus();
+                loadChartData();
+                fetchTrades();
+            } else {
+                showToast("error", "Error al Cerrar", data.detail || data.message);
             }
         } catch (err) {
             console.error("Error cerrando posición:", err);
+            showToast("error", "Error de Conexión", "No se pudo cerrar la posición.");
         }
     };
 
