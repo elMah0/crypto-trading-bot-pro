@@ -42,7 +42,7 @@ class ExchangeClient:
         if not self.mode.dry_run and self.config.api_key and not is_placeholder_secret:
             options["apiKey"] = self.config.api_key
             options["secret"] = self.config.api_secret
-            options["options"] = {"adjustForTimeDifference": True, "recvWindow": 10000}
+            options["options"] = {"adjustForTimeDifference": True, "recvWindow": 10000, "fetchCurrencies": False}
             if self.config.password:
                 options["password"] = self.config.password
 
