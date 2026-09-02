@@ -44,6 +44,11 @@ risk:
   circuit_breaker:
     max_daily_loss_percent: 6.0
     sl_cooldown_hours: 2
+ai:
+  enabled: true
+  min_confidence_score: 70.0
+  provider: gemini
+  model: gemini-1.5-flash
 telegram:
   enabled: true
   send_heartbeat: true

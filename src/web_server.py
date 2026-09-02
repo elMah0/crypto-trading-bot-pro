@@ -97,6 +97,8 @@ class ConfigUpdateRequest(BaseModel):
     max_concurrent_trades: Optional[int] = None
     symbols: Optional[List[str]] = None
     enable_breakeven: Optional[bool] = None
+    ai_enabled: Optional[bool] = None
+    ai_min_confidence_score: Optional[float] = None
 
 
 class PositionLevelUpdateRequest(BaseModel):
@@ -456,6 +458,8 @@ def get_config():
         "take_profit_percent": cfg.risk.take_profit_percent,
         "transaction_fee_percent": getattr(cfg.risk, "transaction_fee_percent", 0.1),
         "enable_breakeven": getattr(cfg.risk, "enable_breakeven", True),
+        "ai_enabled": getattr(cfg.ai, "enabled", True),
+        "ai_min_confidence_score": getattr(cfg.ai, "min_confidence_score", 70.0),
         "trailing_activation_profit": cfg.risk.trailing_stop.activation_profit_percent,
         "trailing_callback": cfg.risk.trailing_stop.callback_percent,
         "max_daily_loss_percent": cfg.risk.circuit_breaker.max_daily_loss_percent,
@@ -506,6 +510,12 @@ def update_config(req: ConfigUpdateRequest):
     if req.transaction_fee_percent is not None and req.transaction_fee_percent >= 0:
         cfg.risk.transaction_fee_percent = req.transaction_fee_percent
         cfg.exchange.transaction_fee_percent = req.transaction_fee_percent
+
+    if req.ai_enabled is not None:
+        cfg.ai.enabled = req.ai_enabled
+
+    if req.ai_min_confidence_score is not None and 0 <= req.ai_min_confidence_score <= 100:
+        cfg.ai.min_confidence_score = req.ai_min_confidence_score
 
     if req.trailing_activation_profit is not None:
         cfg.risk.trailing_stop.activation_profit_percent = req.trailing_activation_profit

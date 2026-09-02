@@ -21,6 +21,7 @@ from src.risk_manager import RiskManager
 from src.database import DatabaseManager
 from src.notifier import TelegramNotifier
 from src.order_executor import OrderExecutor
+from src.ai_evaluator import AIEvaluator
 import src.web_server as web_server
 
 
@@ -62,6 +63,7 @@ class TradingBotOrchestrator:
         self.exchange_client = ExchangeClient(config.exchange, config.mode)
         self.strategy = MultiTimeframeStrategy(config.strategy)
         self.risk_manager = RiskManager(config.risk, config.mode, self.db)
+        self.ai_evaluator = AIEvaluator(config.ai, config.risk.take_profit_percent, config.risk.stop_loss_percent)
         self.notifier = TelegramNotifier(config.telegram)
         self.order_executor = OrderExecutor(
             config=config,
@@ -122,12 +124,34 @@ class TradingBotOrchestrator:
                 self.logger.info(f"[{symbol}] Precio: {current_price:.4f} | Acción: {signal_res.action} | {signal_res.reason}")
 
                 if signal_res.action == "BUY":
-                    self.logger.info(f"¡Señal BUY detectada para {symbol}! Intentando ejecutar orden...")
-                    self.order_executor.execute_buy(
+                    # Evaluación por Inteligencia Artificial (Gemini AI)
+                    ai_res = self.ai_evaluator.evaluate_signal(
                         symbol=symbol,
+                        technical_signal={"action": signal_res.action, "reason": signal_res.reason},
                         current_price=current_price,
-                        reason=signal_res.reason
+                        macro_info={"sma_10d": signal_res.sma_10d, "adx_1d": signal_res.adx_1d},
+                        micro_info={"rsi_1h": signal_res.rsi_1h, "current_volume_1h": signal_res.current_volume_1h, "avg_volume_1h": signal_res.avg_volume_1h}
                     )
+
+                    min_score = getattr(self.config.ai, "min_confidence_score", 70.0)
+                    self.logger.info(
+                        f"🤖 [IA Evaluador - {symbol}] Confianza: {ai_res.confidence_score:.1f}% | "
+                        f"Dictamen: {ai_res.recommendation} | Razonamiento: {ai_res.reasoning}"
+                    )
+
+                    if ai_res.recommendation == "CONFIRM_BUY" and ai_res.confidence_score >= min_score:
+                        self.logger.info(f"¡Señal BUY aprobada por IA (Score: {ai_res.confidence_score:.1f}%)! Ejecutando compra...")
+                        self.order_executor.execute_buy(
+                            symbol=symbol,
+                            current_price=current_price,
+                            reason=f"{signal_res.reason} | IA Confianza: {ai_res.confidence_score:.0f}%",
+                            custom_tp_percent=ai_res.suggested_tp_percent,
+                            custom_sl_percent=ai_res.suggested_sl_percent
+                        )
+                    else:
+                        self.logger.warning(
+                            f"⛔ Entrada cancelada por IA para {symbol} (Score: {ai_res.confidence_score:.1f}% < min {min_score:.0f}%)."
+                        )
 
             except Exception as e:
                 self.logger.error(f"Error procesando símbolo {symbol}: {e}")

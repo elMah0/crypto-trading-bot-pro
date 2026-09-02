@@ -98,13 +98,22 @@ class RiskManager:
         amount = allocated_capital / current_price
         return allocated_capital, amount
 
-    def calculate_initial_levels(self, entry_price: float) -> Tuple[float, float]:
+    def calculate_initial_levels(
+        self,
+        entry_price: float,
+        custom_sl_percent: Optional[float] = None,
+        custom_tp_percent: Optional[float] = None
+    ) -> Tuple[float, float]:
         """
         Calcula los precios de Stop Loss inicial y Take Profit inicial.
+        Permite sobrescribir con niveles dinámicos optimizados por la IA.
         Retorna (sl_price, tp_price).
         """
-        sl_price = entry_price * (1.0 - (self.config.stop_loss_percent / 100.0))
-        tp_price = entry_price * (1.0 + (self.config.take_profit_percent / 100.0))
+        sl_pct = custom_sl_percent if custom_sl_percent is not None and custom_sl_percent > 0 else self.config.stop_loss_percent
+        tp_pct = custom_tp_percent if custom_tp_percent is not None and custom_tp_percent > 0 else self.config.take_profit_percent
+
+        sl_price = entry_price * (1.0 - (sl_pct / 100.0))
+        tp_price = entry_price * (1.0 + (tp_pct / 100.0))
         return sl_price, tp_price
 
     def evaluate_position_exit(

@@ -99,6 +99,15 @@ class DatabaseConfig:
 
 
 @dataclass
+class AIConfig:
+    enabled: bool = True
+    min_confidence_score: float = 70.0
+    provider: str = "gemini"
+    model: str = "gemini-1.5-flash"
+    api_key: Optional[str] = None
+
+
+@dataclass
 class BotLoopConfig:
     check_interval_seconds: int = 60
 
@@ -110,6 +119,7 @@ class AppConfig:
     symbols: List[str] = field(default_factory=lambda: ["BTC/USDT", "ETH/USDT", "SOL/USDT"])
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
     risk: RiskConfig = field(default_factory=RiskConfig)
+    ai: AIConfig = field(default_factory=AIConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     bot_loop: BotLoopConfig = field(default_factory=BotLoopConfig)
@@ -221,7 +231,18 @@ def load_config(config_path: str = "config.yaml", env_path: Optional[str] = ".en
         circuit_breaker=cb_cfg
     )
 
-    # 6. Telegram Config
+    # 6. AI Config
+    ai_raw = raw_cfg.get("ai", {})
+    gemini_key = os.getenv("GEMINI_API_KEY") or ai_raw.get("api_key")
+    ai_cfg = AIConfig(
+        enabled=bool(ai_raw.get("enabled", True)),
+        min_confidence_score=float(ai_raw.get("min_confidence_score", 70.0)),
+        provider=str(ai_raw.get("provider", "gemini")),
+        model=str(ai_raw.get("model", "gemini-1.5-flash")),
+        api_key=gemini_key
+    )
+
+    # 7. Telegram Config
     tg_raw = raw_cfg.get("telegram", {})
     tg_token = os.getenv("TELEGRAM_BOT_TOKEN") or tg_raw.get("bot_token")
     tg_chat = os.getenv("TELEGRAM_CHAT_ID") or tg_raw.get("chat_id")
@@ -235,7 +256,7 @@ def load_config(config_path: str = "config.yaml", env_path: Optional[str] = ".en
         chat_id=tg_chat
     )
 
-    # 7. Database & Bot Loop
+    # 8. Database & Bot Loop
     db_raw = raw_cfg.get("database", {})
     db_cfg = DatabaseConfig(db_path=str(db_raw.get("db_path", "trading_bot.db")))
 
@@ -251,6 +272,7 @@ def load_config(config_path: str = "config.yaml", env_path: Optional[str] = ".en
         symbols=symbols,
         strategy=strat_cfg,
         risk=risk_cfg,
+        ai=ai_cfg,
         telegram=tg_cfg,
         database=db_cfg,
         bot_loop=loop_cfg
@@ -259,7 +281,7 @@ def load_config(config_path: str = "config.yaml", env_path: Optional[str] = ".en
 
 def save_config_to_yaml(config: AppConfig, config_path: str = "config.yaml") -> None:
     """
-    Guarda los datos de la configuración actual de forma persistente en config.yaml.
+    Guarda la configuración actual de la aplicación de nuevo en config.yaml.
     """
     data = {
         "mode": {
@@ -310,6 +332,12 @@ def save_config_to_yaml(config: AppConfig, config_path: str = "config.yaml") -> 
                 "max_daily_loss_percent": config.risk.circuit_breaker.max_daily_loss_percent,
                 "sl_cooldown_hours": config.risk.circuit_breaker.sl_cooldown_hours
             }
+        },
+        "ai": {
+            "enabled": getattr(config.ai, "enabled", True),
+            "min_confidence_score": getattr(config.ai, "min_confidence_score", 70.0),
+            "provider": getattr(config.ai, "provider", "gemini"),
+            "model": getattr(config.ai, "model", "gemini-1.5-flash")
         },
         "telegram": {
             "enabled": config.telegram.enabled,

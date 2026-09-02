@@ -61,10 +61,16 @@ class OrderExecutor:
             self.open_positions[t["symbol"]] = pos
         logger.info(f"Se cargaron {len(self.open_positions)} posiciones abiertas desde la base de datos.")
 
-    def execute_buy(self, symbol: str, current_price: float, reason: str) -> Optional[PositionState]:
+    def execute_buy(
+        self,
+        symbol: str,
+        current_price: float,
+        reason: str = "",
+        custom_tp_percent: Optional[float] = None,
+        custom_sl_percent: Optional[float] = None
+    ) -> Optional[PositionState]:
         """
-        Ejecuta una orden de compra respetando la gestión de riesgo.
-        Soporta modo Dry-Run o ejecución real a través de CCXT.
+        Ejecuta una orden de compra (simulada o real) respetando la gestión de riesgo.
         """
         total_balance = self.get_total_portfolio_value()
         free_balance = self.client.get_free_balance()
@@ -86,7 +92,11 @@ class OrderExecutor:
             logger.warning(f"Capital insuficiente para comprar {symbol}. Costo requerido: {cost:.2f}, Disponible: {free_balance:.2f}")
             return None
 
-        sl_price, tp_price = self.risk_manager.calculate_initial_levels(current_price)
+        sl_price, tp_price = self.risk_manager.calculate_initial_levels(
+            current_price,
+            custom_sl_percent=custom_sl_percent,
+            custom_tp_percent=custom_tp_percent
+        )
         fee_rate = (getattr(self.config.risk, "transaction_fee_percent", 0.1)) / 100.0
         estimated_fee = cost * fee_rate
 
