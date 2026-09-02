@@ -352,6 +352,44 @@
         </main>
     </div>
 
+    <!-- AI Copilot Chat Drawer Widget -->
+    <div id="ai-chat-widget" class="ai-chat-widget">
+        <button id="ai-chat-toggle-btn" class="ai-chat-toggle-btn" title="Abrir Copiloto AI">
+            <i class="fa-solid fa-robot"></i>
+            <span class="ai-badge-dot"></span>
+        </button>
+
+        <div id="ai-chat-window" class="ai-chat-window hidden">
+            <div class="ai-chat-header">
+                <div class="ai-chat-title">
+                    <i class="fa-solid fa-brain"></i>
+                    <span>CryptoBot Copilot AI</span>
+                </div>
+                <button id="ai-chat-close-btn" class="ai-chat-close-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="ai-chat-body" id="ai-chat-messages">
+                <div class="chat-message bot">
+                    <div class="msg-avatar"><i class="fa-solid fa-robot"></i></div>
+                    <div class="msg-content">
+                        ¡Hola! Soy tu Copiloto AI. ¿En qué te puedo ayudar hoy? Puedes pedirme buscar criptos con alto crecimiento en Binance, consultar tu portafolio o cambiar la configuración del bot.
+                    </div>
+                </div>
+            </div>
+
+            <div class="ai-chat-chips">
+                <button class="chat-chip" onclick="sendQuickChatMessage('🚀 Busca las criptos con mayor alza hoy en Binance')">🚀 Top Gainers Binance</button>
+                <button class="chat-chip" onclick="sendQuickChatMessage('📊 Resumen completo de mi portafolio y saldo')">📊 Saldo & Portafolio</button>
+                <button class="chat-chip" onclick="sendQuickChatMessage('⚙️ Cambia el tamaño de posición al 5%')">⚙️ Posición a 5%</button>
+            </div>
+
+            <div class="ai-chat-footer">
+                <input type="text" id="ai-chat-input" placeholder="Pregunta o instruye a la IA..." autocomplete="off">
+                <button id="ai-chat-send-btn" class="btn-send-chat"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
     <!-- Contenedor Flotante de Notificaciones Emergentes (Toasts) -->
     <div id="toast-container" class="toast-container"></div>
 

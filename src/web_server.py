@@ -107,6 +107,10 @@ class PositionLevelUpdateRequest(BaseModel):
     stop_loss_percent: Optional[float] = None
 
 
+class ChatMessageRequest(BaseModel):
+    message: str
+
+
 # --- Endpoints de API REST ---
 
 @app.get("/api/status")
@@ -541,6 +545,112 @@ def update_config(req: ConfigUpdateRequest):
 
     logger.info("Configuración del bot actualizada dinámicamente desde la interfaz Web.")
     return {"success": True, "message": "Configuración actualizada y guardada correctamente"}
+
+
+@app.post("/api/chat")
+def process_chat_message(req: ChatMessageRequest):
+    """
+    Procesa un mensaje de chat del usuario utilizando Gemini AI Copilot.
+    Puede responder consultas del mercado, buscar top gainers o ejecutar comandos de configuración.
+    """
+    if not bot_orchestrator:
+        raise HTTPException(status_code=503, detail="Orquestador no inicializado")
+
+    cfg = bot_orchestrator.config
+    user_msg = req.message.strip()
+    if not user_msg:
+        return {"reply": "Por favor ingresa una pregunta o comando válido."}
+
+    # 1. Consultar balance y top gainers para el contexto
+    try:
+        free_balance = bot_orchestrator.exchange_client.get_free_balance()
+    except Exception:
+        free_balance = 0.0
+
+    open_pos = list(bot_orchestrator.order_executor.open_positions.keys())
+    top_gainers = bot_orchestrator.exchange_client.fetch_top_gainers(top_n=5)
+    gainers_str = "\n".join([f"- {g['symbol']}: {g['price']:.4f} USDT (+{g['change_24h']:.2f}%)" for g in top_gainers]) if top_gainers else "No disponible"
+
+    system_prompt = f"""
+Eres "CryptoBot Copilot AI", un asistente inteligente de trading para CryptoBot Pro.
+El usuario ha enviado la siguiente consulta: "{user_msg}"
+
+Estado y Configuración Actual del Bot:
+- Modo: {'SIMULACIÓN (dry_run=True)' if cfg.mode.dry_run else 'REAL MONEY (dry_run=False)'}
+- Símbolos Activos Monitoreados: {cfg.symbols}
+- Tamaño por posición: {cfg.risk.position_size_percent}%
+- Stop Loss: {cfg.risk.stop_loss_percent}% | Take Profit: {cfg.risk.take_profit_percent}%
+- Saldo Disponible: {free_balance:.2f} USDT
+- Posiciones Abiertas Actualmente: {open_pos if open_pos else 'Ninguna'}
+
+Top 5 Criptomonedas con Mayor Alza (24h) en Binance:
+{gainers_str}
+
+Instrucciones:
+1. Responde amablemente en español con formato Markdown profesional y directo.
+2. Si el usuario pide buscar criptos que han subido mucho, analiza los Top Gainers e indícale sus porcentajes y precios.
+3. Si el usuario pide un cambio de configuración (ej: "pon posición al 10%", "agrega SOL/USDT", "cambia a modo real/simulacion", "pon stop loss en 2%"), debes realizar una explicación clara de lo modificado y SIEMPRE incluir al final de tu respuesta un objeto JSON en formato bloque ```json ... ``` como este:
+
+```json
+{{
+  "action": "update_config",
+  "params": {{
+    "dry_run": true_o_false_si_cambia,
+    "position_size_percent": numero_si_cambia,
+    "stop_loss_percent": numero_si_cambia,
+    "take_profit_percent": numero_si_cambia,
+    "symbols": ["lista_de_simbolos_si_cambia"]
+  }}
+}}
+```
+
+Si no hay cambios de configuración solicitados, NO incluyas bloque JSON.
+"""
+
+    try:
+        import json, re
+        evaluator = bot_orchestrator.ai_evaluator
+        if evaluator._model:
+            response = evaluator._model.generate_content(system_prompt)
+            reply = response.text.strip()
+        else:
+            reply = f"🤖 [Modo Heurístico] Has consultado: '{user_msg}'.\nActualmente tu saldo libre es **{free_balance:.2f} USDT** y tienes monitoreados {len(cfg.symbols)} símbolos."
+
+        # Detectar si hay comandos de acción en JSON en la respuesta de la IA
+        json_match = re.search(r"```json\s*(\{.*?\})\s*```", reply, re.DOTALL)
+        if json_match:
+            try:
+                cmd_data = json.loads(json_match.group(1))
+                if cmd_data.get("action") == "update_config":
+                    params = cmd_data.get("params", {})
+                    if "dry_run" in params:
+                        cfg.mode.dry_run = bool(params["dry_run"])
+                        bot_orchestrator.order_executor.is_dry_run = cfg.mode.dry_run
+                    if "position_size_percent" in params and float(params["position_size_percent"]) > 0:
+                        cfg.risk.position_size_percent = float(params["position_size_percent"])
+                    if "stop_loss_percent" in params and float(params["stop_loss_percent"]) > 0:
+                        cfg.risk.stop_loss_percent = float(params["stop_loss_percent"])
+                    if "take_profit_percent" in params and float(params["take_profit_percent"]) > 0:
+                        cfg.risk.take_profit_percent = float(params["take_profit_percent"])
+                    if "symbols" in params and isinstance(params["symbols"], list) and len(params["symbols"]) > 0:
+                        cfg.symbols = params["symbols"]
+                    
+                    from src.config_loader import save_config_to_yaml
+                    save_config_to_yaml(cfg, "config.yaml")
+                    logger.info(f"IA Copilot aplicó actualización automática de configuración: {params}")
+            except Exception as ex:
+                logger.warning(f"No se pudo aplicar acción JSON de la IA: {ex}")
+
+            # Limpiar la respuesta visual para el usuario si tenía el bloque json técnico
+            reply_clean = re.sub(r"```json\s*(\{.*?\})\s*```", "", reply, flags=re.DOTALL).strip()
+            if reply_clean:
+                reply = reply_clean
+
+        return {"reply": reply, "gainers": top_gainers}
+
+    except Exception as e:
+        logger.error(f"Error procesando mensaje de chat IA: {e}")
+        return {"reply": f"Disculpa, ocurrió un error al procesar tu solicitud: {e}"}
 
 
 

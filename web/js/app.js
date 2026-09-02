@@ -738,5 +738,104 @@ document.addEventListener("DOMContentLoaded", () => {
         fetchStatus();
         loadChartData();
     }, 10000);
+
+    // ==========================================
+    // 11. COPILOTO AI CHAT INTERACTIVO
+    // ==========================================
+    const chatToggleBtn = document.getElementById("ai-chat-toggle-btn");
+    const chatCloseBtn = document.getElementById("ai-chat-close-btn");
+    const chatWindow = document.getElementById("ai-chat-window");
+    const chatMessages = document.getElementById("ai-chat-messages");
+    const chatInput = document.getElementById("ai-chat-input");
+    const chatSendBtn = document.getElementById("ai-chat-send-btn");
+
+    if (chatToggleBtn && chatWindow) {
+        chatToggleBtn.addEventListener("click", () => {
+            chatWindow.classList.toggle("hidden");
+            if (!chatWindow.classList.contains("hidden")) {
+                chatInput.focus();
+            }
+        });
+    }
+
+    if (chatCloseBtn && chatWindow) {
+        chatCloseBtn.addEventListener("click", () => {
+            chatWindow.classList.add("hidden");
+        });
+    }
+
+    function appendChatMessage(sender, text) {
+        const msgDiv = document.createElement("div");
+        msgDiv.className = `chat-message ${sender}`;
+        const avatarIcon = sender === "user" ? "fa-user" : "fa-robot";
+        msgDiv.innerHTML = `
+            <div class="msg-avatar"><i class="fa-solid ${avatarIcon}"></i></div>
+            <div class="msg-content">${text.replace(/\n/g, "<br>")}</div>
+        `;
+        chatMessages.appendChild(msgDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    async function sendChatMessage(messageText) {
+        const msg = messageText || chatInput.value.trim();
+        if (!msg) return;
+
+        appendChatMessage("user", msg);
+        if (!messageText) chatInput.value = "";
+
+        // Indicador de escribiendo
+        const typingDiv = document.createElement("div");
+        typingDiv.className = "chat-message bot typing";
+        typingDiv.id = "chat-typing-indicator";
+        typingDiv.innerHTML = `
+            <div class="msg-avatar"><i class="fa-solid fa-robot fa-spin"></i></div>
+            <div class="msg-content">CryptoBot AI está pensando...</div>
+        `;
+        chatMessages.appendChild(typingDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        try {
+            const res = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: msg })
+            });
+
+            const typingEl = document.getElementById("chat-typing-indicator");
+            if (typingEl) typingEl.remove();
+
+            if (res.ok) {
+                const data = await res.json();
+                appendChatMessage("bot", data.reply || "Respuesta no disponible.");
+                fetchStatus();
+                fetchConfig();
+            } else {
+                appendChatMessage("bot", "Ocurrió un problema de conexión al procesar la solicitud.");
+            }
+        } catch (err) {
+            const typingEl = document.getElementById("chat-typing-indicator");
+            if (typingEl) typingEl.remove();
+            appendChatMessage("bot", "Error de red al conectar con el asistente de IA.");
+        }
+    }
+
+    if (chatSendBtn) {
+        chatSendBtn.addEventListener("click", () => sendChatMessage());
+    }
+
+    if (chatInput) {
+        chatInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                sendChatMessage();
+            }
+        });
+    }
+
+    window.sendQuickChatMessage = function(promptText) {
+        if (chatWindow && chatWindow.classList.contains("hidden")) {
+            chatWindow.classList.remove("hidden");
+        }
+        sendChatMessage(promptText);
+    };
 });
 

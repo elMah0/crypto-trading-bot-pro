@@ -3,7 +3,7 @@ Módulo del Cliente de Exchange utilizando CCXT con soporte para REST, OHLCV, ti
 """
 import time
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import pandas as pd
 import ccxt
 
@@ -158,9 +158,29 @@ class ExchangeClient:
         self._simulated_balance = float(amount)
 
     def reconnect_exchange(self, exchange_config: ExchangeConfig) -> None:
-        """Re-inicializa la conexión CCXT con un nuevo exchange o configuración."""
+        """Re-inicializa la instancia de CCXT al cambiar la configuración en caliente."""
         self.config = exchange_config
         self.exchange_name = exchange_config.name.lower()
         self.client = self._initialize_client()
-        logger.info(f"Cliente de Exchange re-inicializado exitosamente para: {self.exchange_name.upper()}")
+        logger.info(f"Conexión con el exchange '{self.exchange_name.upper()}' re-inicializada exitosamente.")
 
+    def fetch_top_gainers(self, top_n: int = 10) -> List[Dict[str, Any]]:
+        """
+        Consulta todos los tickers del mercado Spot USDT en Binance y devuelve las monedas con mayor porcentaje de alza en 24h.
+        """
+        try:
+            tickers = self.client.fetch_tickers()
+            usdt_tickers = []
+            for symbol, t in tickers.items():
+                if symbol.endswith("/USDT") and t.get("percentage") is not None:
+                    usdt_tickers.append({
+                        "symbol": symbol,
+                        "price": float(t.get("last") or t.get("close") or 0.0),
+                        "change_24h": float(t.get("percentage") or 0.0),
+                        "volume_24h": float(t.get("quoteVolume") or t.get("baseVolume") or 0.0)
+                    })
+            usdt_tickers.sort(key=lambda x: x["change_24h"], reverse=True)
+            return usdt_tickers[:top_n]
+        except Exception as e:
+            logger.error(f"Error consultando top gainers en Binance: {e}")
+            return []
