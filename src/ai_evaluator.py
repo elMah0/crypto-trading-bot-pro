@@ -23,34 +23,35 @@ class AIEvaluationResult:
 
 class AIEvaluator:
     """
-    Evaluador Inteligente basado en Google Gemini AI para filtrado de señales de trading.
+    Evaluador Inteligente basado en Groq AI (LPU Ultra-Fast) y Google Gemini AI para filtrado de señales de trading.
     """
 
     def __init__(self, ai_config: Any, default_tp: float = 2.0, default_sl: float = 1.5):
         self.config = ai_config
         self.default_tp = default_tp
         self.default_sl = default_sl
-        self.api_key = os.getenv("GEMINI_API_KEY") or getattr(ai_config, "api_key", None)
-        self._model = None
-        self._init_gemini()
+        self.groq_api_key = os.getenv("GROQ_API_KEY")
+        self.gemini_api_key = os.getenv("GEMINI_API_KEY") or getattr(ai_config, "api_key", None)
+        self._gemini_model = None
+        self._init_providers()
 
-    def _init_gemini(self) -> None:
-        """Inicializa el cliente de Google Gemini si hay una API Key disponible."""
-        if not self.api_key or self.api_key.startswith("tu_"):
-            logger.info("AIEvaluator: No se detectó GEMINI_API_KEY. Usando motor de evaluación técnica Heurístico.")
-            return
+    def _init_providers(self) -> None:
+        """Inicializa los proveedores de IA disponibles (Groq y/o Gemini)."""
+        if self.groq_api_key and not self.groq_api_key.startswith("tu_"):
+            logger.info("AIEvaluator: Motor Groq AI inicializado (openai/gpt-oss-120b - Ultra Fast).")
 
-        try:
+        if self.gemini_api_key and not self.gemini_api_key.startswith("tu_"):
             try:
                 import google.generativeai as genai
-                genai.configure(api_key=self.api_key)
+                genai.configure(api_key=self.gemini_api_key)
                 model_name = getattr(self.config, "model", "models/gemini-flash-lite-latest")
-                self._model = genai.GenerativeModel(model_name)
+                self._gemini_model = genai.GenerativeModel(model_name)
                 logger.info(f"AIEvaluator: Motor Google Gemini AI inicializado ({model_name}).")
-            except ImportError:
-                logger.warning("Librería google-generativeai no encontrada. Usando motor heurístico.")
-        except Exception as e:
-            logger.warning(f"Error inicializando Google Gemini AI: {e}. Usando motor heurístico.")
+            except Exception as e:
+                logger.warning(f"No se pudo inicializar Gemini: {e}")
+
+        if not self.groq_api_key and not self._gemini_model:
+            logger.info("AIEvaluator: Usando motor de evaluación técnica Heurístico.")
 
     def evaluate_signal(
         self,
@@ -61,7 +62,7 @@ class AIEvaluator:
         micro_info: Dict[str, Any]
     ) -> AIEvaluationResult:
         """
-        Evalúa una señal técnica de trading utilizando Gemini AI o el motor heurístico de respaldo.
+        Evalúa una señal técnica de trading utilizando Groq AI, Gemini AI o el motor heurístico de respaldo.
         """
         if not getattr(self.config, "enabled", True):
             return AIEvaluationResult(
@@ -73,13 +74,71 @@ class AIEvaluator:
                 is_fallback=True
             )
 
-        if self._model:
+        # 1. Prioridad: Groq AI (Ultra rápido y sin límite estricto de cuota)
+        if self.groq_api_key:
+            try:
+                return self._evaluate_with_groq(symbol, technical_signal, current_price, macro_info, micro_info)
+            except Exception as e:
+                logger.warning(f"Excepción en Groq AI ({e}). Intentando proveedor alternativo...")
+
+        # 2. Alternativa: Google Gemini AI
+        if self._gemini_model:
             try:
                 return self._evaluate_with_gemini(symbol, technical_signal, current_price, macro_info, micro_info)
             except Exception as e:
-                logger.warning(f"Excepción en consulta a Gemini AI ({e}). Aplicando evaluación heurística de respaldo.")
+                logger.warning(f"Excepción en Gemini AI ({e}). Aplicando motor heurístico de respaldo.")
 
         return self._evaluate_heuristic(symbol, technical_signal, current_price, macro_info, micro_info)
+
+    def _evaluate_with_groq(
+        self,
+        symbol: str,
+        technical_signal: Dict[str, Any],
+        current_price: float,
+        macro_info: Dict[str, Any],
+        micro_info: Dict[str, Any]
+    ) -> AIEvaluationResult:
+        """Envía prompt estructurado a Groq Cloud API y procesa la respuesta JSON."""
+        import requests
+        prompt = f"""
+Eres un trader cuantitativo experto en criptomonedas.
+Evalúa la siguiente oportunidad de COMPRA para el par {symbol}:
+
+- Precio Actual: {current_price:.4f}
+- Diagnóstico Técnico: {technical_signal.get('reason')}
+- Filtro Macro (1D): SMA10={macro_info.get('sma_10d', 0):.4f}, ADX={macro_info.get('adx_1d', 0):.1f}
+- Filtro Micro (1H): RSI={micro_info.get('rsi_1h', 0):.1f}, Vol Actual={micro_info.get('current_volume_1h', 0):.1f}, Vol Prom={micro_info.get('avg_volume_1h', 0):.1f}
+
+Responde EXCLUSIVAMENTE en formato JSON estricto con las siguientes claves:
+{{
+    "recommendation": "CONFIRM_BUY" o "REJECT_BUY",
+    "confidence_score": número float o int entre 0 y 100,
+    "reasoning": "Breve justificación en español de 1-2 oraciones",
+    "suggested_tp_percent": número float de Take Profit sugerido (ej: 3.5),
+    "suggested_sl_percent": número float de Stop Loss sugerido (ej: 1.5)
+}}
+"""
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {self.groq_api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "openai/gpt-oss-120b",
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.2
+            },
+            timeout=10
+        )
+        data = resp.json()["choices"][0]["message"]["content"]
+        res_json = json.loads(data)
+        return AIEvaluationResult(
+            recommendation=str(res_json.get("recommendation", "CONFIRM_BUY")).upper(),
+            confidence_score=float(res_json.get("confidence_score", 85.0)),
+            reasoning=str(res_json.get("reasoning", "Evaluado por Groq AI")),
+            suggested_tp_percent=float(res_json.get("suggested_tp_percent", self.default_tp)),
+            suggested_sl_percent=float(res_json.get("suggested_sl_percent", self.default_sl)),
+            is_fallback=False
+        )
 
     def _evaluate_with_gemini(
         self,

@@ -608,11 +608,33 @@ Si no hay cambios de configuración solicitados, NO incluyas bloque JSON.
 """
 
     try:
-        import json, re
+        import json, re, requests
         evaluator = bot_orchestrator.ai_evaluator
         reply = None
 
-        if evaluator and evaluator.api_key:
+        # 1. Prioridad: Groq AI (Ultra rápido y sin restricciones de cuota)
+        groq_key = os.getenv("GROQ_API_KEY")
+        if groq_key and not groq_key.startswith("tu_"):
+            try:
+                resp = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": "openai/gpt-oss-120b",
+                        "messages": [{"role": "user", "content": system_prompt}],
+                        "temperature": 0.3
+                    },
+                    timeout=10
+                )
+                if resp.status_code == 200:
+                    reply = resp.json()["choices"][0]["message"]["content"].strip()
+                else:
+                    logger.warning(f"Groq API status {resp.status_code}: {resp.text[:120]}")
+            except Exception as g_err:
+                logger.warning(f"Error consultando Groq AI ({g_err}). Intentando Gemini...")
+
+        # 2. Alternativa: Google Gemini AI
+        if not reply and evaluator and getattr(evaluator, "gemini_api_key", None):
             import google.generativeai as genai
             for model_candidate in ["models/gemini-flash-lite-latest", "models/gemini-flash-latest"]:
                 try:
