@@ -103,7 +103,7 @@ class AIConfig:
     enabled: bool = True
     min_confidence_score: float = 70.0
     provider: str = "gemini"
-    model: str = "gemini-1.5-flash"
+    model: str = "gemini-flash-latest"
     api_key: Optional[str] = None
 
 

@@ -48,7 +48,7 @@ ai:
   enabled: true
   min_confidence_score: 70.0
   provider: gemini
-  model: gemini-1.5-flash
+  model: gemini-flash-latest
 telegram:
   enabled: true
   send_heartbeat: true

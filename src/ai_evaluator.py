@@ -44,7 +44,7 @@ class AIEvaluator:
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=self.api_key)
-                model_name = getattr(self.config, "model", "gemini-1.5-flash")
+                model_name = getattr(self.config, "model", "gemini-flash-latest")
                 self._model = genai.GenerativeModel(model_name)
                 logger.info(f"AIEvaluator: Motor Google Gemini AI inicializado ({model_name}).")
             except ImportError:
