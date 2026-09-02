@@ -113,6 +113,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 borderColor: "rgba(255, 255, 255, 0.08)",
                 timeVisible: true,
                 secondsVisible: false,
+                barSpacing: 6,
+                minBarSpacing: 3,
+                rightOffset: 8
             },
         });
 
@@ -169,7 +172,7 @@ document.addEventListener("DOMContentLoaded", () => {
     async function loadChartData() {
         if (!chartInstance) return;
         try {
-            const res = await fetch(`/api/candles?symbol=${encodeURIComponent(currentSelectedSymbol)}&timeframe=${currentSelectedTf}&limit=80`);
+            const res = await fetch(`/api/candles?symbol=${encodeURIComponent(currentSelectedSymbol)}&timeframe=${currentSelectedTf}&limit=110`);
             if (!res.ok) return;
             const data = await res.json();
 
