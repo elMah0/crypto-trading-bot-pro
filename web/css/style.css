@@ -539,24 +539,30 @@ body {
 }
 
 .positions-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-height: 180px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    min-height: 120px;
     max-height: 480px;
     overflow-y: auto;
     padding-right: 4px;
+}
+
+@media (max-width: 680px) {
+    .positions-list {
+        grid-template-columns: 1fr;
+    }
 }
 
 .position-item-card {
     background: var(--bg-input);
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    padding: 6px 12px;
+    padding: 8px 10px;
     display: flex;
+    flex-direction: column;
     justify-content: space-between;
-    align-items: center;
-    gap: 8px;
+    gap: 6px;
     cursor: pointer;
     transition: all 0.2s ease;
 }
@@ -566,17 +572,17 @@ body {
     background: rgba(255, 255, 255, 0.04);
 }
 
-.pos-info-compact {
+.pos-card-top {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
 }
 
 .pos-info-header-compact {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
 }
 
 .pos-symbol {
@@ -594,6 +600,13 @@ body {
     border-radius: 3px;
 }
 
+.pos-card-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
 .pos-details-compact {
     font-size: 11px;
     color: var(--text-muted);
@@ -602,17 +615,11 @@ body {
     text-overflow: ellipsis;
 }
 
-.pos-actions-compact {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-}
-
 .pos-buttons-group {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
+    flex-shrink: 0;
 }
 
 .pos-pnl-val {
@@ -626,9 +633,9 @@ body {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.15);
     color: #94a3b8;
-    width: 26px;
-    height: 26px;
-    border-radius: 6px;
+    width: 24px;
+    height: 24px;
+    border-radius: 5px;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -645,13 +652,13 @@ body {
 }
 
 .btn-close-pos-compact {
-    padding: 3px 8px;
+    padding: 2px 7px;
     font-size: 10px;
     font-weight: 600;
     background: var(--danger-bg);
     color: var(--danger);
     border: 1px solid rgba(239, 68, 68, 0.3);
-    border-radius: 6px;
+    border-radius: 5px;
     cursor: pointer;
     transition: var(--transition-fast);
 }

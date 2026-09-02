@@ -365,20 +365,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
             html += `
                 <div class="position-item-card" ${activeHighlight} onclick="window.selectPositionOnChart('${pos.symbol}')" title="Haz clic para ver esta posición en el gráfico">
-                    <div class="pos-info-compact">
+                    <div class="pos-card-top">
                         <div class="pos-info-header-compact">
                             <span class="pos-symbol">${pos.symbol}</span>
                             <span class="pos-badge-buy">COMPRA</span>
                             ${trailingTag}
                         </div>
-                        <div class="pos-details-compact">
-                            Entrada: <b>${pos.entry_price.toFixed(4)}</b> | SL: <b style="color:#EF4444;">${pos.current_sl_price.toFixed(4)}</b> | TP: <b style="color:#3B82F6;">${pos.tp_price.toFixed(4)}</b>
-                        </div>
-                    </div>
-                    <div class="pos-actions-compact">
                         <span class="pos-pnl-val ${pnlClass}">
                             ${pnlSign}${pos.pnl_amount.toFixed(2)} (${pnlSign}${pos.pnl_percent.toFixed(2)}%)
                         </span>
+                    </div>
+                    <div class="pos-card-bottom">
+                        <div class="pos-details-compact">
+                            Ent: <b>${pos.entry_price.toFixed(2)}</b> | SL: <b style="color:#EF4444;">${pos.current_sl_price.toFixed(2)}</b> | TP: <b style="color:#3B82F6;">${pos.tp_price.toFixed(2)}</b>
+                        </div>
                         <div class="pos-buttons-group">
                             <button type="button" class="btn-config-pos-compact" onclick="event.stopPropagation(); window.openPositionConfigModal('${pos.symbol}')" title="Configurar parámetros individuales">
                                 <i class="fa-solid fa-gear"></i>
