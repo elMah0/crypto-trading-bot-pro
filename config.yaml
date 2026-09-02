@@ -15,6 +15,7 @@ symbols:
 - SOL/USDT
 - BNB/USDT
 - XRP/USDT
+- CREAM/USDT
 strategy:
   macro:
     timeframe: 1d

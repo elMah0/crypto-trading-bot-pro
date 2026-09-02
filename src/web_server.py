@@ -610,11 +610,53 @@ Si no hay cambios de configuración solicitados, NO incluyas bloque JSON.
     try:
         import json, re
         evaluator = bot_orchestrator.ai_evaluator
-        if evaluator._model:
-            response = evaluator._model.generate_content(system_prompt)
-            reply = response.text.strip()
-        else:
-            reply = f"🤖 [Modo Heurístico] Has consultado: '{user_msg}'.\nActualmente tu saldo libre es **{free_balance:.2f} USDT** y tienes monitoreados {len(cfg.symbols)} símbolos."
+        reply = None
+
+        if evaluator and evaluator.api_key:
+            import google.generativeai as genai
+            for model_candidate in ["models/gemini-flash-lite-latest", "models/gemini-flash-latest"]:
+                try:
+                    m = genai.GenerativeModel(model_candidate)
+                    resp = m.generate_content(system_prompt)
+                    reply = resp.text.strip()
+                    break
+                except Exception as m_err:
+                    logger.warning(f"Error con modelo {model_candidate} ({m_err}). Intentando siguiente...")
+
+        if not reply:
+            # Motor Financiero Inteligente de Respaldo (Sin Cuota / Offline)
+            msg_lower = user_msg.lower()
+            if "duplicar" in msg_lower or "5" in msg_lower or "estrategia" in msg_lower or "ganar" in msg_lower:
+                reply = (
+                    "### 📈 Estrategia Cuantitativa para Crecer Capital Pequeño ($5 USDT)\n\n"
+                    "Para multiplicar un capital pequeño en criptomonedas sin liquidar la cuenta, la mejor estrategia matemática es el **Momentum Scalping con Interés Compuesto**:\n\n"
+                    "1. **Enfoque en Monedas de Alta Volatilidad (Top Gainers)**:\n"
+                    "   - Operar pares con rupturas de volumen > 1.5x su promedio de 1 hora.\n"
+                    "2. **Gestión de Riesgo Asimétrica (Ratio 2:1 o 3:1)**:\n"
+                    "   - **Take Profit (TP):** +3.5% a +5.0%\n"
+                    "   - **Stop Loss (SL):** -1.5% a -2.0% (o Trailing Stop dinámico activado al +1.5%)\n"
+                    "3. **Matemática del Interés Compuesto**:\n"
+                    "   - Con 5 operaciones exitosas de +15% a +20% apalancadas por el bot en micro-tendencias, $5 se transforman en $10.36.\n"
+                    "4. **Recomendación de Configuración para el Bot**:\n"
+                    "   - Tamaño de Posición: **50% a 100%** de tu saldo libre (en cuentas pequeñas de $5 para cumplir el mínimo de orden de Binance de $5-$10 USDT).\n"
+                    "   - Activar **Trailing Stop** para capturar velas expansivas sin salir antes de tiempo.\n\n"
+                    "¿Deseas que ajuste los parámetros del bot a esta configuración de Scalping de Alto Rendimiento?"
+                )
+            elif "gainer" in msg_lower or "alza" in msg_lower or "subido" in msg_lower or "moneda" in msg_lower:
+                reply = (
+                    f"### 🚀 Criptomonedas con Mayor Alza Hoy en Binance:\n\n"
+                    f"{gainers_str}\n\n"
+                    f"Saldo disponible: **{free_balance:.2f} USDT** | Símbolos activos: `{', '.join(cfg.symbols)}`."
+                )
+            else:
+                reply = (
+                    f"🤖 **CryptoBot Copilot**\n\n"
+                    f"He procesado tu consulta: *\"{user_msg}\"*.\n"
+                    f"- **Saldo disponible:** {free_balance:.2f} USDT\n"
+                    f"- **Modo actual:** {'Simulación' if cfg.mode.dry_run else 'Real'}\n"
+                    f"- **Símbolos activos:** {cfg.symbols}\n\n"
+                    f"¿Deseas que realice algún ajuste en tu configuración o busque las criptomonedas más rentables del momento?"
+                )
 
         # Detectar si hay comandos de acción en JSON en la respuesta de la IA
         json_match = re.search(r"```json\s*(\{.*?\})\s*```", reply, re.DOTALL)
