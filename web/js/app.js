@@ -360,33 +360,33 @@ document.addEventListener("DOMContentLoaded", () => {
         positions.forEach(pos => {
             const pnlClass = pos.pnl_amount >= 0 ? "pnl-positive" : "pnl-negative";
             const pnlSign = pos.pnl_amount >= 0 ? "+" : "";
-            const trailingTag = pos.trailing_active ? `<span class="badge-pro" style="background:#10B981;color:#fff;">Trailing ON</span>` : "";
+            const trailingTag = pos.trailing_active ? `<span class="badge-pro" style="background:#10B981;color:#fff;font-size:9px;padding:1px 4px;">TS ON</span>` : "";
             const activeHighlight = pos.symbol === currentSelectedSymbol ? 'style="border-color:#3B82F6; background: rgba(59,130,246,0.08);"' : '';
 
             html += `
                 <div class="position-item-card" ${activeHighlight} onclick="window.selectPositionOnChart('${pos.symbol}')" title="Haz clic para ver esta posición en el gráfico">
-                    <div class="pos-info">
-                        <div class="pos-info-header">
+                    <div class="pos-info-compact">
+                        <div class="pos-info-header-compact">
                             <span class="pos-symbol">${pos.symbol}</span>
                             <span class="pos-badge-buy">COMPRA</span>
                             ${trailingTag}
-                            <span class="badge-pro" style="background:rgba(255,255,255,0.06);color:#9CA3AF;font-size:10px;"><i class="fa-solid fa-chart-line"></i> Ver Gráfico</span>
                         </div>
-                        <div class="pos-details">
-                            Entrada: <b>${pos.entry_price.toFixed(4)}</b> | Actual: <b>${pos.current_price.toFixed(4)}</b><br>
-                            SL: <b style="color:#EF4444;">${pos.current_sl_price.toFixed(4)}</b> | TP: <b style="color:#3B82F6;">${pos.tp_price.toFixed(4)}</b>
+                        <div class="pos-details-compact">
+                            Entrada: <b>${pos.entry_price.toFixed(4)}</b> | SL: <b style="color:#EF4444;">${pos.current_sl_price.toFixed(4)}</b> | TP: <b style="color:#3B82F6;">${pos.tp_price.toFixed(4)}</b>
                         </div>
                     </div>
-                    <div class="pos-pnl-box" style="display: flex; align-items: center; gap: 8px;">
+                    <div class="pos-actions-compact">
                         <span class="pos-pnl-val ${pnlClass}">
-                            ${pnlSign}${pos.pnl_amount.toFixed(2)} USDT (${pnlSign}${pos.pnl_percent.toFixed(2)}%)
+                            ${pnlSign}${pos.pnl_amount.toFixed(2)} (${pnlSign}${pos.pnl_percent.toFixed(2)}%)
                         </span>
-                        <button type="button" class="btn-config-pos" onclick="event.stopPropagation(); window.openPositionConfigModal('${pos.symbol}')" title="Configurar parámetros de esta posición">
-                            <i class="fa-solid fa-gear"></i>
-                        </button>
-                        <button type="button" class="btn-close-pos" onclick="event.stopPropagation(); window.closePosition('${pos.symbol.replace('/', '-')}')" title="Cerrar posición a mercado">
-                            Cerrar
-                        </button>
+                        <div class="pos-buttons-group">
+                            <button type="button" class="btn-config-pos-compact" onclick="event.stopPropagation(); window.openPositionConfigModal('${pos.symbol}')" title="Configurar parámetros individuales">
+                                <i class="fa-solid fa-gear"></i>
+                            </button>
+                            <button type="button" class="btn-close-pos-compact" onclick="event.stopPropagation(); window.closePosition('${pos.symbol.replace('/', '-')}')" title="Cerrar posición a mercado">
+                                Cerrar
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
