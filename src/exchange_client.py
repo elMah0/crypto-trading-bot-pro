@@ -36,10 +36,9 @@ class ExchangeClient:
             "timeout": self.config.timeout_seconds * 1000,
         }
 
-        # Solo adjuntar credenciales privadas si NO estamos en simulación (dry_run) 
-        # y la secret key no es una plantilla por defecto
+        # Adjuntar credenciales si existen en .env (tanto en simulación como en real)
         is_placeholder_secret = not self.config.api_secret or "tu_api_secret" in str(self.config.api_secret).lower() or len(str(self.config.api_secret)) < 10
-        if not self.mode.dry_run and self.config.api_key and not is_placeholder_secret:
+        if self.config.api_key and not is_placeholder_secret:
             options["apiKey"] = self.config.api_key
             options["secret"] = self.config.api_secret
             options["options"] = {"adjustForTimeDifference": True, "recvWindow": 10000, "fetchCurrencies": False}
@@ -48,7 +47,7 @@ class ExchangeClient:
 
         client: ccxt.Exchange = exchange_class(options)
 
-        if not self.mode.dry_run and hasattr(client, "load_time_difference"):
+        if hasattr(client, "load_time_difference") and self.config.api_key and not is_placeholder_secret:
             try:
                 client.load_time_difference()
             except Exception as e:
@@ -123,28 +122,29 @@ class ExchangeClient:
     def get_free_balance(self, currency: Optional[str] = None) -> float:
         """
         Retorna el balance libre disponible.
-        En modo simulación (dry_run), gestiona el balance virtual.
-        En modo real, consulta la API del exchange.
+        Lee la información real desde Binance si hay credenciales configuradas en .env.
+        En modo simulación (dry_run), utiliza la información real como base para simular operaciones sin riesgo.
         """
         target_currency = currency or self.mode.quote_currency
-        if self.mode.dry_run:
-            return float(self._simulated_balance)
+        is_placeholder_secret = not self.config.api_secret or "tu_api_secret" in str(self.config.api_secret).lower() or len(str(self.config.api_secret)) < 10
 
-        try:
-            balance_data = self.client.fetch_balance()
-            free_balance = balance_data.get("free", {}).get(target_currency, 0.0)
-            return float(free_balance)
-        except ccxt.AuthenticationError:
-            msg = (
-                f"No se pudieron consultar credenciales API para '{self.exchange_name.upper()}'. "
-                "Para operar en MODO REAL debes configurar EXCHANGE_API_KEY y EXCHANGE_API_SECRET en tu archivo .env "
-                "o cambiar a MODO SIMULACIÓN (dry_run: true) en la configuración."
-            )
-            logger.error(msg)
-            raise ValueError(msg)
-        except Exception as e:
-            logger.error(f"Error consultando balance real en el exchange: {e}")
-            raise
+        if self.config.api_key and not is_placeholder_secret:
+            try:
+                balance_data = self.client.fetch_balance()
+                free_balance = balance_data.get("free", {}).get(target_currency, 0.0)
+                if self.mode.dry_run and not getattr(self, "_real_balance_initialized", False):
+                    if free_balance and float(free_balance) > 0:
+                        self._simulated_balance = float(free_balance)
+                    self._real_balance_initialized = True
+
+                if not self.mode.dry_run:
+                    return float(free_balance)
+                return float(self._simulated_balance)
+            except Exception as e:
+                logger.warning(f"No se pudo consultar balance en tiempo real de Binance ({e}). Usando saldo simulado.")
+                return float(self._simulated_balance)
+
+        return float(self._simulated_balance)
 
     def update_simulated_balance(self, delta_amount: float) -> float:
         """Actualiza el balance virtual para el modo simulación."""
