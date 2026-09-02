@@ -574,30 +574,91 @@ def process_chat_message(req: ChatMessageRequest):
     except Exception:
         free_balance = 0.0
 
-    open_pos = list(bot_orchestrator.order_executor.open_positions.keys())
+    open_positions_dict = bot_orchestrator.order_executor.open_positions
+    pos_details_list = []
+    for s, p in open_positions_dict.items():
+        try:
+            curr_p = bot_orchestrator.exchange_client.fetch_ticker_price(s)
+            pnl_p = ((curr_p - p.entry_price) / p.entry_price) * 100.0
+        except Exception:
+            curr_p = p.entry_price
+            pnl_p = 0.0
+        pos_details_list.append(
+            f"- {s}: Entrada: {p.entry_price:.4f} | Actual: {curr_p:.4f} ({pnl_p:+.2f}%) | "
+            f"TP: {p.tp_price:.4f} ({p.take_profit_percent}%) | SL: {p.current_sl_price:.4f} ({p.stop_loss_percent}%) | "
+            f"Breakeven: {'Activo' if p.enable_breakeven else 'Inactivo'} | Trailing: {'Activo' if p.trailing_active else 'Pendiente'}"
+        )
+    pos_details_str = "\n".join(pos_details_list) if pos_details_list else "Ninguna posición abierta en este momento."
+
     top_gainers = bot_orchestrator.exchange_client.fetch_top_gainers(top_n=5)
     gainers_str = "\n".join([f"- {g['symbol']}: {g['price']:.4f} USDT (+{g['change_24h']:.2f}%)" for g in top_gainers]) if top_gainers else "No disponible"
 
     system_prompt = f"""
-Eres "CryptoBot Copilot AI", un asistente inteligente de trading para CryptoBot Pro.
+Eres "CryptoBot Copilot AI", el asistente inteligente con PERMISOS COMPLETOS DE CONTROL Y TRADING para CryptoBot Pro.
 El usuario ha enviado la siguiente consulta: "{user_msg}"
 
 Estado y Configuración Actual del Bot:
-- Modo: {'SIMULACIÓN (dry_run=True)' if cfg.mode.dry_run else 'REAL MONEY (dry_run=False)'}
+- Modo de Ejecución: {'SIMULACIÓN (dry_run=True)' if cfg.mode.dry_run else 'REAL MONEY (dry_run=False)'}
 - Símbolos Activos Monitoreados: {cfg.symbols}
-- Tamaño por posición: {cfg.risk.position_size_percent}%
-- Stop Loss: {cfg.risk.stop_loss_percent}% | Take Profit: {cfg.risk.take_profit_percent}%
 - Saldo Disponible: {free_balance:.2f} USDT
-- Posiciones Abiertas Actualmente: {open_pos if open_pos else 'Ninguna'}
+- Posiciones Abiertas Actualmente con Parámetros Individuales:
+{pos_details_str}
 
 Top 5 Criptomonedas con Mayor Alza (24h) en Binance:
 {gainers_str}
 
-Instrucciones:
-1. Responde amablemente en español con formato Markdown profesional y directo.
-2. Si el usuario pide buscar criptos que han subido mucho, analiza los Top Gainers e indícale sus porcentajes y precios.
-3. Si el usuario pide un cambio de configuración (ej: "pon posición al 10%", "agrega SOL/USDT", "cambia a modo real/simulacion", "pon stop loss en 2%"), debes realizar una explicación clara de lo modificado y SIEMPRE incluir al final de tu respuesta un objeto JSON en formato bloque ```json ... ``` como este:
+Instrucciones y Capacidades:
+1. Responde amablemente en español con formato Markdown profesional, claro y directo.
+2. Tienes permisos para manipular el bot. Si el usuario te pide:
+   - ABRIR POSICIÓN (ej: "compra SOL", "abre posición en ETH con 5 USDT, TP 5% y SL 2%"):
+     Debes explicar la acción y generar un bloque JSON con action "open_position".
+   - CERRAR POSICIÓN (ej: "cierra SOL", "vende BTC", "cierra todas"):
+     Debes explicar la acción y generar un bloque JSON con action "close_position".
+   - MODIFICAR UNA POSICIÓN ESPECÍFICA (ej: "sube el TP de SOL al 8%", "ajusta el SL de ETH a 1%"):
+     Debes explicar que el cambio se aplica ÚNICAMENTE a esa posición y generar un bloque JSON con action "update_position".
+   - CAMBIOS GLOBALES (ej: "pon posición al 10%", "modo real"):
+     Generar action "update_config".
 
+Formatos JSON de Acción (debes incluir solo UNO al final de tu respuesta en formato ```json ... ``` si aplica):
+
+Para abrir posición:
+```json
+{{
+  "action": "open_position",
+  "params": {{
+    "symbol": "BTC/USDT",
+    "amount_quote": 5.0,
+    "custom_tp_percent": 4.0,
+    "custom_sl_percent": 2.0
+  }}
+}}
+```
+
+Para cerrar posición:
+```json
+{{
+  "action": "close_position",
+  "params": {{
+    "symbol": "BTC/USDT"
+  }}
+}}
+```
+(Para cerrar todas: `"symbol": "ALL"`)
+
+Para modificar una posición abierta de forma aislada:
+```json
+{{
+  "action": "update_position",
+  "params": {{
+    "symbol": "BTC/USDT",
+    "take_profit_percent": 6.0,
+    "stop_loss_percent": 1.5,
+    "enable_breakeven": true
+  }}
+}}
+```
+
+Para configuración global:
 ```json
 {{
   "action": "update_config",
@@ -606,12 +667,12 @@ Instrucciones:
     "position_size_percent": numero_si_cambia,
     "stop_loss_percent": numero_si_cambia,
     "take_profit_percent": numero_si_cambia,
-    "symbols": ["lista_de_simbolos_si_cambia"]
+    "symbols": ["lista_si_cambia"]
   }}
 }}
 ```
 
-Si no hay cambios de configuración solicitados, NO incluyas bloque JSON.
+Si el usuario solo hace una pregunta informativa, NO incluyas bloque JSON.
 """
 
     try:
@@ -653,7 +714,7 @@ Si no hay cambios de configuración solicitados, NO incluyas bloque JSON.
                     logger.warning(f"Error con modelo {model_candidate} ({m_err}). Intentando siguiente...")
 
         if not reply:
-            # Motor Financiero Inteligente de Respaldo (Sin Cuota / Offline)
+            # Motor Financiero Inteligente de Respaldo (Offline)
             msg_lower = user_msg.lower()
             if "duplicar" in msg_lower or "5" in msg_lower or "estrategia" in msg_lower or "ganar" in msg_lower:
                 reply = (
@@ -663,15 +724,15 @@ Si no hay cambios de configuración solicitados, NO incluyas bloque JSON.
                     "   - Operar pares con rupturas de volumen > 1.5x su promedio de 1 hora.\n"
                     "2. **Gestión de Riesgo Asimétrica (Ratio 2:1 o 3:1)**:\n"
                     "   - **Take Profit (TP):** +3.5% a +5.0%\n"
-                    "   - **Stop Loss (SL):** -1.5% a -2.0% (o Trailing Stop dinámico activado al +1.5%)\n"
+                    "   - **Stop Loss (SL):** -1.5% a -2.0%\n"
                     "3. **Matemática del Interés Compuesto**:\n"
-                    "   - Con 5 operaciones exitosas de +15% a +20% apalancadas por el bot en micro-tendencias, $5 se transforman en $10.36.\n"
-                    "4. **Recomendación de Configuración para el Bot**:\n"
-                    "   - Tamaño de Posición: **50% a 100%** de tu saldo libre (en cuentas pequeñas de $5 para cumplir el mínimo de orden de Binance de $5-$10 USDT).\n"
-                    "   - Activar **Trailing Stop** para capturar velas expansivas sin salir antes de tiempo.\n\n"
-                    "¿Deseas que ajuste los parámetros del bot a esta configuración de Scalping de Alto Rendimiento?"
+                    "   - Con 5 a 10 operaciones de micro-tendencia consecutivas, $5 se transforman en $10+ USDT.\n"
+                    "4. **Recomendación de Parámetros**:\n"
+                    "   - Posición: **100%** de saldo libre por orden (para cumplir el mínimo de Binance).\n"
+                    "   - Trailing Stop activado al +1.5%.\n\n"
+                    "¿Deseas que abra una posición ahora en alguna de las monedas de alta ganancia?"
                 )
-            elif "gainer" in msg_lower or "alza" in msg_lower or "subido" in msg_lower or "moneda" in msg_lower:
+            elif "gainer" in msg_lower or "alza" in msg_lower or "subido" in msg_lower:
                 reply = (
                     f"### 🚀 Criptomonedas con Mayor Alza Hoy en Binance:\n\n"
                     f"{gainers_str}\n\n"
@@ -683,17 +744,61 @@ Si no hay cambios de configuración solicitados, NO incluyas bloque JSON.
                     f"He procesado tu consulta: *\"{user_msg}\"*.\n"
                     f"- **Saldo disponible:** {free_balance:.2f} USDT\n"
                     f"- **Modo actual:** {'Simulación' if cfg.mode.dry_run else 'Real'}\n"
-                    f"- **Símbolos activos:** {cfg.symbols}\n\n"
-                    f"¿Deseas que realice algún ajuste en tu configuración o busque las criptomonedas más rentables del momento?"
+                    f"- **Posiciones abiertas:** {len(open_positions_dict)}\n\n"
+                    f"¿Deseas abrir una posición, cerrarla o cambiar parámetros de alguna de ellas?"
                 )
 
-        # Detectar si hay comandos de acción en JSON en la respuesta de la IA
+        # Detectar y ejecutar comandos de acción en JSON devueltos por la IA
         json_match = re.search(r"```json\s*(\{.*?\})\s*```", reply, re.DOTALL)
         if json_match:
             try:
                 cmd_data = json.loads(json_match.group(1))
-                if cmd_data.get("action") == "update_config":
-                    params = cmd_data.get("params", {})
+                action = cmd_data.get("action")
+                params = cmd_data.get("params", {})
+
+                # A) Abrir Posición Manual
+                if action == "open_position":
+                    sym = str(params.get("symbol", "")).upper()
+                    if sym:
+                        amt_q = float(params.get("amount_quote")) if params.get("amount_quote") else None
+                        tp_p = float(params.get("custom_tp_percent")) if params.get("custom_tp_percent") else None
+                        sl_p = float(params.get("custom_sl_percent")) if params.get("custom_sl_percent") else None
+                        res_pos = bot_orchestrator.order_executor.open_manual_position(
+                            symbol=sym,
+                            quote_amount=amt_q,
+                            custom_tp_percent=tp_p,
+                            custom_sl_percent=sl_p,
+                            reason="Orden Ejecutada por Copiloto AI"
+                        )
+                        if res_pos:
+                            logger.info(f"IA Copilot abrió exitosamente posición en {sym}")
+                        else:
+                            logger.warning(f"IA Copilot no pudo abrir posición en {sym}")
+
+                # B) Cerrar Posición
+                elif action == "close_position":
+                    sym = str(params.get("symbol", "")).upper()
+                    if sym == "ALL":
+                        for s in list(bot_orchestrator.order_executor.open_positions.keys()):
+                            bot_orchestrator.order_executor.close_position_by_symbol(s, reason="Cierre Total por Copiloto AI")
+                    elif sym:
+                        bot_orchestrator.order_executor.close_position_by_symbol(sym, reason="Cierre Manual por Copiloto AI")
+
+                # C) Modificar Posición Aislada
+                elif action == "update_position":
+                    sym = str(params.get("symbol", "")).upper()
+                    if sym:
+                        bot_orchestrator.order_executor.update_position_parameters(
+                            symbol=sym,
+                            take_profit_percent=params.get("take_profit_percent"),
+                            stop_loss_percent=params.get("stop_loss_percent"),
+                            trailing_activation_percent=params.get("trailing_activation_percent"),
+                            trailing_callback_percent=params.get("trailing_callback_percent"),
+                            enable_breakeven=params.get("enable_breakeven")
+                        )
+
+                # D) Modificar Configuración Global
+                elif action == "update_config":
                     if "dry_run" in params:
                         cfg.mode.dry_run = bool(params["dry_run"])
                         bot_orchestrator.order_executor.is_dry_run = cfg.mode.dry_run
@@ -708,11 +813,12 @@ Si no hay cambios de configuración solicitados, NO incluyas bloque JSON.
                     
                     from src.config_loader import save_config_to_yaml
                     save_config_to_yaml(cfg, "config.yaml")
-                    logger.info(f"IA Copilot aplicó actualización automática de configuración: {params}")
+                    logger.info(f"IA Copilot aplicó actualización global de configuración: {params}")
+
             except Exception as ex:
                 logger.warning(f"No se pudo aplicar acción JSON de la IA: {ex}")
 
-            # Limpiar la respuesta visual para el usuario si tenía el bloque json técnico
+            # Limpiar la respuesta visual para el usuario del bloque json técnico
             reply_clean = re.sub(r"```json\s*(\{.*?\})\s*```", "", reply, flags=re.DOTALL).strip()
             if reply_clean:
                 reply = reply_clean

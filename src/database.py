@@ -69,7 +69,21 @@ class DatabaseManager:
                     closed_at TEXT,
                     is_dry_run INTEGER NOT NULL
                 )
-            """)
+            """)            # Migración de columnas de parámetros individuales por posición
+            cursor.execute("PRAGMA table_info(trades)")
+            cols = [info[1] for info in cursor.fetchall()]
+            if "stop_loss_percent" not in cols:
+                cursor.execute("ALTER TABLE trades ADD COLUMN stop_loss_percent REAL DEFAULT 1.5")
+            if "take_profit_percent" not in cols:
+                cursor.execute("ALTER TABLE trades ADD COLUMN take_profit_percent REAL DEFAULT 2.0")
+            if "trailing_stop_enabled" not in cols:
+                cursor.execute("ALTER TABLE trades ADD COLUMN trailing_stop_enabled INTEGER DEFAULT 1")
+            if "trailing_activation_percent" not in cols:
+                cursor.execute("ALTER TABLE trades ADD COLUMN trailing_activation_percent REAL DEFAULT 1.2")
+            if "trailing_callback_percent" not in cols:
+                cursor.execute("ALTER TABLE trades ADD COLUMN trailing_callback_percent REAL DEFAULT 0.8")
+            if "enable_breakeven" not in cols:
+                cursor.execute("ALTER TABLE trades ADD COLUMN enable_breakeven INTEGER DEFAULT 1")
 
             # Tabla de snapshots diarios / rendimiento
             cursor.execute("""
@@ -100,20 +114,74 @@ class DatabaseManager:
         amount: float,
         cost: float,
         fee: float,
-        is_dry_run: bool
+        is_dry_run: bool,
+        stop_loss_percent: float = 1.5,
+        take_profit_percent: float = 2.0,
+        trailing_stop_enabled: bool = True,
+        trailing_activation_percent: float = 1.2,
+        trailing_callback_percent: float = 0.8,
+        enable_breakeven: bool = True
     ) -> int:
-        """Registra la apertura de una nueva posición."""
+        """Registra la apertura de una nueva posición con sus parámetros individuales."""
         now_utc = datetime.now(timezone.utc).isoformat()
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO trades (
                     symbol, order_type, entry_price, amount, cost, fee,
-                    status, opened_at, is_dry_run
-                ) VALUES (?, 'BUY', ?, ?, ?, ?, 'OPEN', ?, ?)
-            """, (symbol, entry_price, amount, cost, fee, now_utc, 1 if is_dry_run else 0))
+                    status, opened_at, is_dry_run,
+                    stop_loss_percent, take_profit_percent, trailing_stop_enabled,
+                    trailing_activation_percent, trailing_callback_percent, enable_breakeven
+                ) VALUES (?, 'BUY', ?, ?, ?, ?, 'OPEN', ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                symbol, entry_price, amount, cost, fee, now_utc, 1 if is_dry_run else 0,
+                stop_loss_percent, take_profit_percent, 1 if trailing_stop_enabled else 0,
+                trailing_activation_percent, trailing_callback_percent, 1 if enable_breakeven else 0
+            ))
             conn.commit()
             return cursor.lastrowid
+
+    def update_trade_parameters(
+        self,
+        trade_id: int,
+        stop_loss_percent: Optional[float] = None,
+        take_profit_percent: Optional[float] = None,
+        trailing_stop_enabled: Optional[bool] = None,
+        trailing_activation_percent: Optional[float] = None,
+        trailing_callback_percent: Optional[float] = None,
+        enable_breakeven: Optional[bool] = None
+    ) -> None:
+        """Actualiza los parámetros individuales de una posición abierta en SQLite."""
+        updates = []
+        params = []
+        if stop_loss_percent is not None:
+            updates.append("stop_loss_percent = ?")
+            params.append(stop_loss_percent)
+        if take_profit_percent is not None:
+            updates.append("take_profit_percent = ?")
+            params.append(take_profit_percent)
+        if trailing_stop_enabled is not None:
+            updates.append("trailing_stop_enabled = ?")
+            params.append(1 if trailing_stop_enabled else 0)
+        if trailing_activation_percent is not None:
+            updates.append("trailing_activation_percent = ?")
+            params.append(trailing_activation_percent)
+        if trailing_callback_percent is not None:
+            updates.append("trailing_callback_percent = ?")
+            params.append(trailing_callback_percent)
+        if enable_breakeven is not None:
+            updates.append("enable_breakeven = ?")
+            params.append(1 if enable_breakeven else 0)
+
+        if not updates:
+            return
+
+        params.append(trade_id)
+        query = f"UPDATE trades SET {', '.join(updates)} WHERE id = ?"
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            conn.commit()
 
     def close_trade(
         self,
@@ -124,7 +192,7 @@ class DatabaseManager:
         exit_reason: str,
         fee: float = 0.0
     ) -> None:
-        """Actualiza y cierra una operación registrada."""
+        """Actualiza una posición a cerrada y registra el resultado neto."""
         now_utc = datetime.now(timezone.utc).isoformat()
         with self._get_connection() as conn:
             cursor = conn.cursor()
