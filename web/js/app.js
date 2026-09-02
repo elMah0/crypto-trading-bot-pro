@@ -818,6 +818,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 appendChatMessage("bot", data.reply || "Respuesta no disponible.");
                 fetchStatus();
                 fetchConfig();
+                if (typeof fetchPositions === "function") fetchPositions();
+                if (typeof fetchTrades === "function") fetchTrades();
+                if (typeof fetchHistory === "function") fetchHistory();
+                if (typeof renderCharts === "function") renderCharts();
             } else {
                 appendChatMessage("bot", "Ocurrió un problema de conexión al procesar la solicitud.");
             }
