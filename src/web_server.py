@@ -556,6 +556,13 @@ def process_chat_message(req: ChatMessageRequest):
     if not bot_orchestrator:
         raise HTTPException(status_code=503, detail="Orquestador no inicializado")
 
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(".env")
+        load_dotenv()
+    except Exception:
+        pass
+
     cfg = bot_orchestrator.config
     user_msg = req.message.strip()
     if not user_msg:
