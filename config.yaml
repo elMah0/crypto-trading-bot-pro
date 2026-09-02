@@ -18,6 +18,8 @@ symbols:
 - CREAM/USDT
 - T/USDT
 - PNT/USDT
+- MUBARAK/USDT
+- EGLD/USDT
 strategy:
   macro:
     timeframe: 1d
@@ -35,7 +37,7 @@ strategy:
     volume_factor: 0.85
 risk:
   position_size_percent: 50.0
-  max_concurrent_trades: 5
+  max_concurrent_trades: 10
   stop_loss_percent: 5.0
   take_profit_percent: 100.0
   transaction_fee_percent: 0.1

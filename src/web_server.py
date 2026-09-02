@@ -66,6 +66,8 @@ class WebSocketLogHandler(logging.Handler):
         except Exception:
             pass
 
+# Cola global de operaciones solicitadas e historial de comandos de la IA
+ai_operations_queue: List[Dict[str, Any]] = []
 
 # Configuración del log handler para WebSockets
 ws_log_handler = WebSocketLogHandler()
@@ -123,7 +125,7 @@ def get_bot_status():
         free_balance = bot_orchestrator.exchange_client.get_free_balance()
         total_balance = bot_orchestrator.order_executor.get_total_portfolio_value()
     except Exception as e:
-        logger.warning(f"No se pudo consultar balance del exchange: {e}")
+        logger.error(f"Error obteniendo balances de exchange: {e}")
         free_balance = 0.0
         total_balance = 0.0
 
@@ -180,8 +182,15 @@ def get_bot_status():
         "today_summary": today_summary,
         "all_time_summary": all_time_summary,
         "symbols": bot_orchestrator.config.symbols,
-        "transaction_fee_percent": getattr(bot_orchestrator.config.risk, "transaction_fee_percent", 0.1)
+        "transaction_fee_percent": getattr(bot_orchestrator.config.risk, "transaction_fee_percent", 0.1),
+        "queue": ai_operations_queue[:15]
     }
+
+
+@app.get("/api/queue")
+def get_operations_queue():
+    """Retorna la cola e historial de operaciones solicitadas al bot por chat o interfaz."""
+    return {"queue": ai_operations_queue[:30]}
 
 
 @app.get("/api/signals")
@@ -798,82 +807,132 @@ Si el usuario solo hace una pregunta informativa, NO incluyas bloque JSON.
                     f"¿Deseas abrir una posición, cerrarla o cambiar parámetros de alguna de ellas?"
                 )
 
-        # Detectar y ejecutar comandos de acción en JSON devueltos por la IA
-        json_match = re.search(r"```json\s*(\{.*?\})\s*```", reply, re.DOTALL)
+        # Detectar y ejecutar comandos de acción en JSON devueltos por la IA (objeto o lista)
+        json_match = re.search(r"```(?:json)?\s*(\[\s*\{.*?\}\s*\]|\{.*?\})\s*```", reply, re.DOTALL)
         if json_match:
             try:
-                cmd_data = json.loads(json_match.group(1))
-                action = cmd_data.get("action")
-                params = cmd_data.get("params", {})
+                raw_json = json.loads(json_match.group(1))
+                cmd_list = raw_json if isinstance(raw_json, list) else [raw_json]
 
-                # A) Abrir Posición Manual
-                if action == "open_position":
-                    sym = str(params.get("symbol", "")).upper()
-                    if sym:
-                        amt_q = float(params.get("amount_quote")) if params.get("amount_quote") else None
-                        tp_p = float(params.get("custom_tp_percent")) if params.get("custom_tp_percent") else None
-                        sl_p = float(params.get("custom_sl_percent")) if params.get("custom_sl_percent") else None
-                        res_pos = bot_orchestrator.order_executor.open_manual_position(
-                            symbol=sym,
-                            quote_amount=amt_q,
-                            custom_tp_percent=tp_p,
-                            custom_sl_percent=sl_p,
-                            reason="Orden Ejecutada por Copiloto AI"
-                        )
-                        if res_pos:
-                            logger.info(f"IA Copilot abrió exitosamente posición en {sym}")
-                        else:
-                            logger.warning(f"IA Copilot no pudo abrir posición en {sym}")
+                for cmd_data in cmd_list:
+                    if not isinstance(cmd_data, dict):
+                        continue
+                    action = cmd_data.get("action")
+                    params = cmd_data.get("params", {})
+                    now_str = datetime.now().strftime("%H:%M:%S")
 
-                # B) Cerrar Posición
-                elif action == "close_position":
-                    sym = str(params.get("symbol", "")).upper()
-                    if sym == "ALL":
-                        for s in list(bot_orchestrator.order_executor.open_positions.keys()):
-                            bot_orchestrator.order_executor.close_position_by_symbol(s, reason="Cierre Total por Copiloto AI")
-                    elif sym:
-                        bot_orchestrator.order_executor.close_position_by_symbol(sym, reason="Cierre Manual por Copiloto AI")
+                    # A) Abrir Posición Manual
+                    if action == "open_position":
+                        sym = str(params.get("symbol", "")).upper()
+                        if sym:
+                            amt_q = float(params.get("amount_quote")) if params.get("amount_quote") else None
+                            tp_p = float(params.get("custom_tp_percent")) if params.get("custom_tp_percent") else None
+                            sl_p = float(params.get("custom_sl_percent")) if params.get("custom_sl_percent") else None
+                            res_pos = bot_orchestrator.order_executor.open_manual_position(
+                                symbol=sym,
+                                quote_amount=amt_q,
+                                custom_tp_percent=tp_p,
+                                custom_sl_percent=sl_p,
+                                reason="Orden Ejecutada por Copiloto AI"
+                            )
+                            status_str = "EJECUTADA" if res_pos else "RECHAZADA"
+                            ai_operations_queue.insert(0, {
+                                "id": len(ai_operations_queue) + 1,
+                                "time": now_str,
+                                "type": "APERTURA",
+                                "symbol": sym,
+                                "details": f"Monto: {amt_q or 'Auto'} USDT | TP: {tp_p or 'Def'}% | SL: {sl_p or 'Def'}%",
+                                "status": status_str
+                            })
+                            if res_pos:
+                                logger.info(f"IA Copilot abrió exitosamente posición en {sym}")
+                            else:
+                                logger.warning(f"IA Copilot no pudo abrir posición en {sym}")
 
-                # C) Modificar Posición Aislada
-                elif action == "update_position":
-                    sym = str(params.get("symbol", "")).upper()
-                    if sym:
-                        bot_orchestrator.order_executor.update_position_parameters(
-                            symbol=sym,
-                            take_profit_percent=params.get("take_profit_percent"),
-                            stop_loss_percent=params.get("stop_loss_percent"),
-                            trailing_activation_percent=params.get("trailing_activation_percent"),
-                            trailing_callback_percent=params.get("trailing_callback_percent"),
-                            enable_breakeven=params.get("enable_breakeven")
-                        )
+                    # B) Cerrar Posición
+                    elif action == "close_position":
+                        sym = str(params.get("symbol", "")).upper()
+                        if sym == "ALL":
+                            for s in list(bot_orchestrator.order_executor.open_positions.keys()):
+                                bot_orchestrator.order_executor.close_position_by_symbol(s, reason="Cierre Total por Copiloto AI")
+                            ai_operations_queue.insert(0, {
+                                "id": len(ai_operations_queue) + 1,
+                                "time": now_str,
+                                "type": "CIERRE TOTAL",
+                                "symbol": "TODAS",
+                                "details": "Cierre de mercado de todas las posiciones",
+                                "status": "EJECUTADA"
+                            })
+                        elif sym:
+                            c_res = bot_orchestrator.order_executor.close_position_by_symbol(sym, reason="Cierre Manual por Copiloto AI")
+                            ai_operations_queue.insert(0, {
+                                "id": len(ai_operations_queue) + 1,
+                                "time": now_str,
+                                "type": "CIERRE",
+                                "symbol": sym,
+                                "details": "Cierre a mercado por orden de chat",
+                                "status": "EJECUTADA" if c_res else "NO ENCONTRADA"
+                            })
 
-                # D) Modificar Configuración Global
-                elif action == "update_config":
-                    if "dry_run" in params:
-                        cfg.mode.dry_run = bool(params["dry_run"])
-                        bot_orchestrator.order_executor.is_dry_run = cfg.mode.dry_run
-                    if "position_size_percent" in params and float(params["position_size_percent"]) > 0:
-                        cfg.risk.position_size_percent = float(params["position_size_percent"])
-                    if "stop_loss_percent" in params and float(params["stop_loss_percent"]) > 0:
-                        cfg.risk.stop_loss_percent = float(params["stop_loss_percent"])
-                    if "take_profit_percent" in params and float(params["take_profit_percent"]) > 0:
-                        cfg.risk.take_profit_percent = float(params["take_profit_percent"])
-                    if "symbols" in params and isinstance(params["symbols"], list) and len(params["symbols"]) > 0:
-                        cfg.symbols = params["symbols"]
-                    
-                    from src.config_loader import save_config_to_yaml
-                    save_config_to_yaml(cfg, "config.yaml")
-                    logger.info(f"IA Copilot aplicó actualización global de configuración: {params}")
+                    # C) Modificar Posición Aislada
+                    elif action == "update_position":
+                        sym = str(params.get("symbol", "")).upper()
+                        if sym:
+                            u_res = bot_orchestrator.order_executor.update_position_parameters(
+                                symbol=sym,
+                                take_profit_percent=params.get("take_profit_percent"),
+                                stop_loss_percent=params.get("stop_loss_percent"),
+                                trailing_activation_percent=params.get("trailing_activation_percent"),
+                                trailing_callback_percent=params.get("trailing_callback_percent"),
+                                enable_breakeven=params.get("enable_breakeven")
+                            )
+                            ai_operations_queue.insert(0, {
+                                "id": len(ai_operations_queue) + 1,
+                                "time": now_str,
+                                "type": "AJUSTE",
+                                "symbol": sym,
+                                "details": f"TP: {params.get('take_profit_percent')}% | SL: {params.get('stop_loss_percent')}%",
+                                "status": "EJECUTADA" if u_res else "NO ENCONTRADA"
+                            })
+
+                    # D) Modificar Configuración Global
+                    elif action == "update_config":
+                        if "dry_run" in params:
+                            cfg.mode.dry_run = bool(params["dry_run"])
+                            bot_orchestrator.order_executor.is_dry_run = cfg.mode.dry_run
+                        if "position_size_percent" in params and float(params["position_size_percent"]) > 0:
+                            cfg.risk.position_size_percent = float(params["position_size_percent"])
+                        if "stop_loss_percent" in params and float(params["stop_loss_percent"]) > 0:
+                            cfg.risk.stop_loss_percent = float(params["stop_loss_percent"])
+                        if "take_profit_percent" in params and float(params["take_profit_percent"]) > 0:
+                            cfg.risk.take_profit_percent = float(params["take_profit_percent"])
+                        if "symbols" in params and isinstance(params["symbols"], list) and len(params["symbols"]) > 0:
+                            cfg.symbols = params["symbols"]
+                        
+                        from src.config_loader import save_config_to_yaml
+                        save_config_to_yaml(cfg, "config.yaml")
+                        logger.info(f"IA Copilot aplicó actualización global de configuración: {params}")
+                        ai_operations_queue.insert(0, {
+                            "id": len(ai_operations_queue) + 1,
+                            "time": now_str,
+                            "type": "CONFIG",
+                            "symbol": "SISTEMA",
+                            "details": f"Ajustes globales actualizados",
+                            "status": "EJECUTADA"
+                        })
+
+                if len(ai_operations_queue) > 50:
+                    del ai_operations_queue[50:]
 
             except Exception as ex:
                 logger.warning(f"No se pudo aplicar acción JSON de la IA: {ex}")
 
             # Limpiar la respuesta visual para el usuario del bloque json técnico
-            reply_clean = re.sub(r"```json\s*(\{.*?\})\s*```", "", reply, flags=re.DOTALL).strip()
+            reply_clean = re.sub(r"```(?:json)?\s*(\[\s*\{.*?\}\s*\]|\{.*?\})\s*```", "", reply, flags=re.DOTALL).strip()
             if reply_clean:
                 reply = reply_clean
 
-        return {"reply": reply, "gainers": top_gainers}
+        return {"reply": reply, "gainers": top_gainers, "queue": ai_operations_queue[:10]}
 
     except Exception as e:
         logger.error(f"Error procesando mensaje de chat IA: {e}")

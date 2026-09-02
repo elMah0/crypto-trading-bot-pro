@@ -340,9 +340,56 @@ document.addEventListener("DOMContentLoaded", () => {
             // Renderizar Posiciones Abiertas
             renderPositions(latestOpenPositions);
 
+            // Renderizar Operaciones en Cola / Solicitadas
+            renderOperationsQueue(data.queue || []);
+
         } catch (err) {
             console.error("Error consultando estado:", err);
         }
+    }
+
+    function renderOperationsQueue(queue) {
+        const badgeQueue = document.getElementById("badge-queue-count");
+        const queueList = document.getElementById("queue-list");
+        if (!queueList) return;
+
+        if (badgeQueue) badgeQueue.textContent = queue.length;
+
+        if (!queue || queue.length === 0) {
+            queueList.innerHTML = `
+                <div class="empty-state" style="padding: 14px;">
+                    <i class="fa-solid fa-inbox"></i>
+                    <p>No hay operaciones recientes en cola.</p>
+                    <span>Las órdenes y ajustes pedidos al Copiloto AI se listarán aquí.</span>
+                </div>
+            `;
+            return;
+        }
+
+        let html = "";
+        queue.forEach(item => {
+            let badgeCls = "badge-adjust";
+            if (item.type === "APERTURA") badgeCls = "badge-open";
+            else if (item.type.includes("CIERRE")) badgeCls = "badge-close";
+            else if (item.type === "CONFIG") badgeCls = "badge-config";
+
+            const okCls = item.status === "EJECUTADA" ? "ok" : "";
+
+            html += `
+                <div class="queue-item-card">
+                    <div class="queue-item-left">
+                        <span class="queue-type-badge ${badgeCls}">${item.type}</span>
+                        <span class="queue-symbol">${item.symbol}</span>
+                        <span class="queue-details">${item.details}</span>
+                    </div>
+                    <div class="queue-item-right">
+                        <span class="queue-time">${item.time}</span>
+                        <span class="queue-status-tag ${okCls}">${item.status}</span>
+                    </div>
+                </div>
+            `;
+        });
+        queueList.innerHTML = html;
     }
 
     function renderPositions(positions) {

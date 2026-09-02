@@ -158,20 +158,41 @@
 
                 <!-- Posiciones Abiertas y Live Log -->
                 <div class="dashboard-split-grid">
-                    <!-- Posiciones Abiertas -->
-                    <div class="panel-card">
-                        <div class="panel-header">
-                            <div class="panel-title">
-                                <i class="fa-solid fa-arrow-trend-up"></i>
-                                <h3>Posiciones Abiertas</h3>
+                    <!-- Columna Izquierda: Posiciones y Cola -->
+                    <div class="dashboard-left-col" style="display: flex; flex-direction: column; gap: 14px;">
+                        <!-- Posiciones Abiertas -->
+                        <div class="panel-card">
+                            <div class="panel-header">
+                                <div class="panel-title">
+                                    <i class="fa-solid fa-arrow-trend-up"></i>
+                                    <h3>Posiciones Abiertas</h3>
+                                </div>
+                                <span class="badge-count" id="badge-open-count">0</span>
                             </div>
-                            <span class="badge-count" id="badge-open-count">0</span>
+                            <div class="positions-list" id="positions-list">
+                                <div class="empty-state">
+                                    <i class="fa-solid fa-box-open"></i>
+                                    <p>No hay posiciones abiertas en este momento.</p>
+                                    <span>El bot entrará automáticamente cuando se cumplan los filtros técnicos.</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="positions-list" id="positions-list">
-                            <div class="empty-state">
-                                <i class="fa-solid fa-box-open"></i>
-                                <p>No hay posiciones abiertas en este momento.</p>
-                                <span>El bot entrará automáticamente cuando se cumplan los filtros técnicos.</span>
+
+                        <!-- Panel de Operaciones en Cola / Solicitadas al Bot -->
+                        <div class="panel-card">
+                            <div class="panel-header">
+                                <div class="panel-title">
+                                    <i class="fa-solid fa-clock-rotate-left" style="color: #818cf8;"></i>
+                                    <h3>Operaciones Solicitadas / En Cola</h3>
+                                </div>
+                                <span class="badge-count" id="badge-queue-count">0</span>
+                            </div>
+                            <div class="queue-list" id="queue-list">
+                                <div class="empty-state" style="padding: 14px;">
+                                    <i class="fa-solid fa-inbox"></i>
+                                    <p>No hay operaciones recientes en cola.</p>
+                                    <span>Las órdenes y ajustes que le pidas al Copiloto AI se registrarán aquí.</span>
+                                </div>
                             </div>
                         </div>
                     </div>
