@@ -235,6 +235,10 @@ class DatabaseManager:
             row = cursor.fetchone()
             return dict(row) if row else None
 
+    def get_last_trade(self, symbol: str, is_dry_run: bool) -> Optional[Dict[str, Any]]:
+        """Obtiene la última operación registrada o cerrada para un símbolo específico."""
+        return self.get_last_closed_trade_for_symbol(symbol, is_dry_run)
+
     def get_pnl_last_24h(self, is_dry_run: bool) -> float:
         """
         Calcula la sumatoria del PnL monetario de operaciones cerradas en las últimas 24 horas.

@@ -79,7 +79,7 @@ class RiskManager:
                 return False, f"Cortocircuito activado: Pérdida diaria ({daily_loss_percent:.2f}%) supera el máximo ({cb_cfg.max_daily_loss_percent}%)"
 
         # 4. Cooldown tras Stop Loss
-        last_trade = self.db.get_last_trade(symbol, is_dry_run=self.mode.dry_run)
+        last_trade = self.db.get_last_closed_trade_for_symbol(symbol, is_dry_run=self.mode.dry_run)
         if last_trade and last_trade.get("exit_reason") == "STOP_LOSS":
             closed_at_str = last_trade.get("closed_at")
             if closed_at_str:
